@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>バーチャルサイクリング</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚴</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <h1 class="brand">🚴 バーチャルサイクリング</h1>
+  <nav class="nav">
+    <button type="button" data-nav="route">ルート</button>
+    <button type="button" data-nav="ride">走行</button>
+    <button type="button" data-nav="dashboard">記録</button>
+    <button type="button" data-nav="setup">設定</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============ 設定 ============ -->
+<section class="screen" id="screen-setup">
+  <div class="wrap">
+    <h2>設定</h2>
+
+    <div class="card">
+      <h3>Google Maps API キー</h3>
+      <p class="muted">
+        3D 映像を使うには API キーが必要です。キーは<strong>この端末のブラウザにのみ保存</strong>され、
+        リポジトリやサーバーには送信されません。
+      </p>
+      <div class="row">
+        <input type="password" id="api-key-input" placeholder="AIza..." autocomplete="off">
+        <button type="button" id="api-key-save" class="primary">保存</button>
+        <button type="button" id="api-key-skip">キー無しで試す</button>
+      </div>
+      <p class="status" id="maps-status">未設定（2D 表示モードで動作します）</p>
+
+      <details class="note">
+        <summary>⚠️ キーを発行したら必ず制限をかけてください</summary>
+        <p>静的サイトのため API キーはブラウザに露出します。以下は<strong>必須</strong>の設定です。</p>
+        <ol>
+          <li>Google Cloud で <strong>Maps JavaScript API / Map Tiles API / Routes API / Elevation API</strong> を有効化</li>
+          <li>キーに <strong>HTTP リファラ制限</strong>（例: <code>kuzu-noha.github.io/*</code>）を設定</li>
+          <li>キーに <strong>API 種別制限</strong>を設定（上記4つのみ許可）</li>
+          <li><strong>日次クォータ上限</strong>を設定（想定利用量の2〜3倍で頭打ちに）</li>
+          <li><strong>予算アラート</strong>を設定</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3>プロフィールと走行設定</h3>
+      <form id="settings-form" class="grid-form">
+        <label>体重 (kg)<input type="number" name="weightKg" min="30" max="200" step="0.1"></label>
+        <label>年齢<input type="number" name="age" min="10" max="100" step="1"></label>
+        <label>目標体重 (kg)<input type="number" name="targetWeightKg" min="30" max="200" step="0.1"></label>
+        <label>週間目標 (kcal)<input type="number" name="weeklyKcalGoal" min="0" step="100"></label>
+        <label>映像速度の倍率<input type="number" name="speedMultiplier" min="1" max="3" step="0.1"></label>
+        <label>カメラ距離 (m)<input type="number" name="cameraRangeM" min="10" max="300" step="5"></label>
+        <label>カメラ俯角 (度)<input type="number" name="cameraTilt" min="0" max="90" step="1"></label>
+        <label class="check"><input type="checkbox" name="gradeEnabled"> 勾配連動を使う</label>
+        <label class="check"><input type="checkbox" name="loop"> 終点で最初に戻る</label>
+      </form>
+      <p class="muted">
+        映像速度の倍率を上げると、ゆっくり漕いでも景色が速く進みます。
+        短時間でも「遠くまで行った感」が出るので、continuity（継続）に効きます。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ルート選択 ============ -->
+<section class="screen" id="screen-route" hidden>
+  <div class="wrap">
+    <h2>ルートを選ぶ</h2>
+
+    <div class="card">
+      <h3>プリセット</h3>
+      <p class="muted">3D タイルのカバレッジが確実な地域です。まずはここから。</p>
+      <ul class="preset-list" id="preset-list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>GPX ファイルを読み込む</h3>
+      <p class="muted">
+        Strava や Garmin から書き出した GPX を使えます。標高が含まれていれば
+        API を呼ばずに勾配を再現できます。
+      </p>
+      <input type="file" id="gpx-input" accept=".gpx,application/gpx+xml">
+    </div>
+
+    <div class="card">
+      <h3>地点を指定して生成</h3>
+      <p class="muted">
+        緯度,経度で入力してください。自転車ルートが無い地域では
+        徒歩 → 自動車の順に自動で切り替えます。
+      </p>
+      <form id="route-search" class="row">
+        <input type="text" id="route-from" placeholder="出発地 35.6852,139.7528">
+        <input type="text" id="route-to" placeholder="目的地 35.6586,139.7454">
+        <button type="submit" class="primary">ルート生成</button>
+      </form>
+    </div>
+
+    <p class="busy" id="route-busy" hidden>読み込み中…</p>
+
+    <div class="card is-highlight" id="route-ready" hidden>
+      <h3>選択中のルート</h3>
+      <div class="route-summary" id="route-summary"></div>
+      <button type="button" class="primary large" data-nav="ride">走行画面へ →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 走行 ============ -->
+<section class="screen" id="screen-ride" hidden>
+  <div class="ride-layout">
+
+    <div class="ride-stage" id="ride-stage">
+      <div class="map-stage" id="map-stage">
+        <div class="stage-placeholder">ルートを選んで「走行開始」を押してください</div>
+      </div>
+      <div class="sv-stage" id="sv-stage"></div>
+
+      <div class="hud">
+        <div class="hud-main">
+          <div class="metric metric-lg">
+            <span class="value" data-hud="speed">0.0</span><span class="unit">km/h</span>
+          </div>
+          <div class="metric">
+            <span class="value" data-hud="power">0</span><span class="unit">W</span>
+          </div>
+          <div class="metric">
+            <span class="value" data-hud="cadence">0</span><span class="unit">rpm</span>
+          </div>
+          <div class="metric">
+            <span class="value" data-hud="heartRate">--</span><span class="unit">bpm</span>
+          </div>
+        </div>
+        <div class="hud-sub">
+          <div class="metric"><span class="value" data-hud="distance">0.00</span><span class="unit">km</span></div>
+          <div class="metric"><span class="value" data-hud="time">00:00</span></div>
+          <div class="metric"><span class="value" data-hud="grade">+0.0%</span></div>
+          <div class="metric">
+            <span class="value" data-hud="kcal">0</span><span class="unit">kcal</span>
+            <small class="note-inline" data-hud="kcalNote"></small>
+          </div>
+          <div class="metric"><span class="value zone" data-hud="zone">--</span></div>
+        </div>
+        <div class="progress">
+          <div class="progress-bar" data-hud="progressBar"></div>
+          <span class="progress-text" data-hud="progressText">0%</span>
+        </div>
+        <svg class="elevation" id="elevation-profile" aria-label="標高プロファイル"></svg>
+      </div>
+    </div>
+
+    <aside class="ride-side">
+      <div class="card">
+        <h3>デバイス</h3>
+        <p class="status" id="ble-note"></p>
+        <div class="stack">
+          <button type="button" id="connect-trainer" class="primary">スマートトレーナーに接続</button>
+          <button type="button" id="connect-hr">心拍計に接続</button>
+        </div>
+        <hr>
+        <p class="muted">機材が無くても動作を確認できます。</p>
+        <label class="slider">
+          擬似出力 <span id="sim-power-value">150 W</span>
+          <input type="range" id="sim-power" min="50" max="350" step="10" value="150">
+        </label>
+        <button type="button" id="connect-sim">シミュレーターで開始</button>
+        <div class="device-info">
+          <strong id="source-name">未接続</strong>
+          <span class="muted" id="source-status">デバイスを選んでください</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>走行</h3>
+        <div class="stack">
+          <button type="button" id="ride-start" class="primary large" disabled>走行開始</button>
+          <button type="button" id="ride-pause" disabled>一時停止</button>
+          <button type="button" id="ride-finish" disabled>終了して記録</button>
+          <button type="button" id="sv-toggle">見回す（ストリートビュー）</button>
+        </div>
+        <p class="muted">
+          ストリートビューは1枚ごとに課金されるため、押したときと1kmごとのみ表示します。
+        </p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============ 記録・ダイエット ============ -->
+<section class="screen" id="screen-dashboard" hidden>
+  <div class="wrap">
+    <h2>記録</h2>
+
+    <div class="stat-grid">
+      <div class="stat">
+        <span class="stat-label">今週の消費</span>
+        <span class="stat-value" data-dash="weekKcal">0</span>
+        <span class="stat-unit">kcal / 目標 <span data-dash="weekGoal">0</span></span>
+        <div class="progress"><div class="progress-bar" data-dash="weekBar"></div></div>
+        <span class="muted" data-dash="weekAchieved">0%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">直近30日</span>
+        <span class="stat-value" data-dash="monthKcal">0</span>
+        <span class="stat-unit">kcal</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">連続日数</span>
+        <span class="stat-value" data-dash="streak">0</span>
+        <span class="stat-unit">日</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">累計距離</span>
+        <span class="stat-value" data-dash="totalKm">0.0</span>
+        <span class="stat-unit">km / <span data-dash="rideCount">0</span> 回</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>体重</h3>
+      <div class="row">
+        <div class="weight-now">
+          <span class="muted">現在</span>
+          <strong data-dash="currentWeight">未記録</strong>
+          <span class="muted">開始時比 <span data-dash="weightDelta">--</span></span>
+        </div>
+        <form id="weight-form" class="row">
+          <input type="number" id="weight-input" placeholder="体重 kg" step="0.1" min="20" max="250">
+          <input type="number" id="bodyfat-input" placeholder="体脂肪率 %（任意）" step="0.1" min="1" max="70">
+          <button type="submit" class="primary">記録</button>
+        </form>
+      </div>
+      <svg class="weight-chart" data-dash="weightChart" aria-label="体重推移"></svg>
+      <p class="muted" data-dash="weightEmpty">
+        2回以上記録するとグラフが表示されます（青い線は7日移動平均、緑の点線は目標体重）。
+      </p>
+      <p class="muted" data-dash="weightRange"></p>
+    </div>
+
+    <div class="card">
+      <h3>走行履歴</h3>
+      <ul class="session-list" data-dash="sessionList"></ul>
+    </div>
+
+    <div class="card">
+      <h3>データ管理</h3>
+      <p class="muted">
+        体重・体脂肪・心拍は要配慮情報として扱い、この端末のブラウザ内にのみ保存しています。
+        サーバーには一切送信されません。
+      </p>
+      <div class="row">
+        <button type="button" id="export-data">JSON でエクスポート</button>
+        <button type="button" id="clear-data" class="danger">すべて削除</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

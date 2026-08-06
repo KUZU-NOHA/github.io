@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>バーチャルサイクリング</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚴</text></svg>">
+<style>
+  :root {
+    --bg: #f5f7fa; --surface: #fff; --border: #dde3ea;
+    --text: #1a2233; --muted: #667085; --accent: #0284c7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1220; --surface: #151d2e; --border: #263349;
+      --text: #e6edf7; --muted: #94a3b8; --accent: #38bdf8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 3rem 1.25rem 5rem;
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.9rem; margin: 0 0 .4rem; }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 2rem; }
+  .cta {
+    display: inline-block; background: var(--accent); color: #fff;
+    padding: .8rem 1.8rem; border-radius: 10px; font-weight: 600;
+    text-decoration: none; font-size: 1.05rem;
+  }
+  .cta:hover { filter: brightness(1.1); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.2rem 1.4rem; margin: 1rem 0;
+  }
+  h2 { font-size: 1.15rem; margin: 2.2rem 0 .6rem; }
+  ul { padding-left: 1.3rem; margin: .5rem 0; }
+  li { margin: .3rem 0; }
+  code {
+    background: var(--bg); border: 1px solid var(--border);
+    padding: .1rem .4rem; border-radius: 4px; font-size: .88em;
+  }
+  a { color: var(--accent); }
+  .warn { border-left: 4px solid #d97706; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin: .6rem 0; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🚴 バーチャルサイクリング</h1>
+  <p class="lead">
+    Google マップの 3D 地図の中を、自分が漕いだぶんだけ進む。
+    Bluetooth スマートトレーナーと連携し、坂道では実際にペダルが重くなります。
+    ダイエットの継続を支えるための室内サイクリングアプリです。
+  </p>
+
+  <p><a class="cta" href="app/">アプリを開く →</a></p>
+
+  <div class="card warn">
+    <strong>⚠️ 動作環境</strong>
+    <p style="margin:.4rem 0 0">
+      Bluetooth 接続には <strong>PC / Mac の Chrome</strong> が必要です。
+      iOS の Safari と iOS 版 Chrome は Web Bluetooth に対応していないため、
+      iPhone では App Store の <strong>WebBLE</strong> ブラウザからお使いください。
+      機材が無くても<strong>シミュレーターモード</strong>で全機能を試せます。
+    </p>
+  </div>
+
+  <h2>できること</h2>
+  <ul>
+    <li>フォトリアルな 3D 地図の中を走る（実質無料で使えるセッション課金）</li>
+    <li>スマートトレーナー(FTMS)から速度・ケイデンス・パワー・心拍を取得</li>
+    <li>ルートの標高から勾配を計算し、トレーナーの負荷へ反映</li>
+    <li>消費カロリーの算出（パワー計があれば実測ベース、無ければ METs 推定）</li>
+    <li>体重推移・週間カロリー・連続日数の記録</li>
+    <li>プリセットルート / GPX インポート / 地点指定でのルート生成</li>
+  </ul>
+
+  <h2>使いはじめる</h2>
+  <ol>
+    <li>Google Cloud で API キーを発行し、<strong>Maps JavaScript API / Map Tiles API / Routes API / Elevation API</strong> を有効化</li>
+    <li>キーに <strong>HTTP リファラ制限・API 種別制限・日次クォータ上限・予算アラート</strong>を設定</li>
+    <li>アプリの設定画面でキーを入力（キーはこの端末のブラウザにのみ保存されます）</li>
+  </ol>
+  <p class="lead" style="font-size:.92rem">
+    キーが無くても 2D 表示モードで動作するので、まず触ってみることができます。
+  </p>
+
+  <h2>1回30分走ったときの API コスト</h2>
+  <table>
+    <tr><th>方式</th><th>課金単位</th><th>実コスト</th></tr>
+    <tr><td>フォトリアル 3D タイル</td><td>セッション(3時間)</td><td><strong>約0.9円</strong></td></tr>
+    <tr><td>ストリートビュー</td><td>パノラマ1枚ごと</td><td>約2,100円</td></tr>
+  </table>
+  <p class="lead" style="font-size:.92rem">
+    このアプリは 3D タイルを主軸に据え、ストリートビューは「見回す」ボタンと
+    1km ごとのチェックポイントに限定しています。月1,000セッションの無料枠があるため、
+    毎日乗っても実質無料の範囲に収まります。
+  </p>
+
+  <h2>ドキュメント</h2>
+  <p>
+    <a href="docs/virtual-cycling-requirements.md">要件定義書</a> —
+    実現可否の技術的判断、BLE の GATT 仕様、コスト設計、利用規約上の制約、
+    リスクと対策、開発フェーズ計画。
+  </p>
+
+  <footer>
+    地図データ © Google — 本アプリは Google Maps Platform を利用しています。
+  </footer>
+
+</div>
+</body>
+</html>
