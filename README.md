@@ -4,7 +4,10 @@ Google マップの 3D 地図の中を、自分が漕いだぶんだけ進む室
 Bluetooth スマートトレーナーと連携し、坂道では実際にペダルが重くなります。
 **ダイエットの継続を支えること**を目的にしています。
 
-👉 **[アプリを開く](https://kuzu-noha.github.io/app/)** ／ **[要件定義書](docs/virtual-cycling-requirements.md)**
+👉 **[動かす手順（完全版）](docs/SETUP.md)** ／ **[アプリを開く](https://kuzu-noha.github.io/github.io/app/)** ／ **[要件定義書](docs/virtual-cycling-requirements.md)**
+
+> **初めての方は [docs/SETUP.md](docs/SETUP.md) をご覧ください。**
+> STEP 1・2 だけなら5分・費用ゼロで、機材も API キーも無しに動作を確認できます。
 
 ---
 
@@ -47,7 +50,7 @@ WebBLE のような専用ブラウザかネイティブアプリが必要です�
 
 | 設定 | 内容 |
 |---|---|
-| **アプリケーションの制限** | HTTP リファラー → `kuzu-noha.github.io/*` |
+| **アプリケーションの制限** | HTTP リファラー → `kuzu-noha.github.io/github.io/*` |
 | **API の制限** | 上記4つの API のみ許可 |
 | **クォータ上限** | 各 API に日次上限を設定（想定利用量の2〜3倍） |
 | **予算アラート** | Cloud Billing で通知を設定 |
