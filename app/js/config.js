@@ -24,6 +24,9 @@ export const DEFAULT_SETTINGS = {
   loop: true,
   cameraRangeM: 50,
   cameraTilt: 74,
+  // CSC / Cycling Power のホイール回転数から速度を出す機種で使う。
+  // 700x25C 相当。一体型エアロバイクでは通常この値は使われない
+  wheelCircumferenceMm: 2105,
 };
 
 export function getApiKey() {

@@ -11,6 +11,8 @@
  *  - 不具合が BLE 起因かアプリロジック起因かを切り分けられる
  */
 
+import { speedFromPower } from '../ride/physics.js';
+
 const TICK_MS = 250;
 
 export class SimulatedTrainer extends EventTarget {
@@ -102,24 +104,6 @@ export class SimulatedTrainer extends EventTarget {
    * 転がり抵抗・重力・空気抵抗の合計が駆動力と等しくなる点を二分探索する。
    */
   _equilibriumSpeedKmh(powerW, gradePercent) {
-    if (powerW <= 0) return 0;
-    const g = 9.81;
-    const crr = 0.005;
-    const cwA = 0.32; // 空気抵抗係数 × 前面投影面積
-    const rho = 1.225;
-    const slope = gradePercent / 100;
-    const mass = this.riderWeightKg;
-
-    const requiredPower = (v) =>
-      v * (crr * mass * g + mass * g * slope) + 0.5 * rho * cwA * v ** 3;
-
-    let lo = 0;
-    let hi = 30; // m/s
-    for (let i = 0; i < 40; i++) {
-      const mid = (lo + hi) / 2;
-      if (requiredPower(mid) < powerW) lo = mid;
-      else hi = mid;
-    }
-    return lo * 3.6;
+    return speedFromPower(powerW, gradePercent, this.riderWeightKg);
   }
 }

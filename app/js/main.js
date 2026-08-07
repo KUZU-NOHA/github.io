@@ -16,7 +16,7 @@ import {
 import { View3D } from './map/view3d.js';
 import { Fallback2D } from './map/fallback2d.js';
 import { StreetViewSpot, CheckpointTracker } from './map/streetview.js';
-import { FtmsTrainer } from './ble/ftms.js';
+import { BikeSensor } from './ble/bike.js';
 import { HeartRateMonitor } from './ble/heartRate.js';
 import { SimulatedTrainer } from './ble/simulator.js';
 import { RideEngine, RideState } from './ride/engine.js';
@@ -298,10 +298,34 @@ function totalClimb(elevations) {
 
 /* ---------------- BLE 接続 ---------------- */
 
+/**
+ * バイクに接続する。
+ * acceptAll=true は「サービスを広告しない機種」を拾うための逃げ道。
+ * 一体型エアロバイクではこちらでないと見つからないことがある。
+ */
+async function connectBike({ acceptAll }) {
+  try {
+    const bike = new BikeSensor({
+      wheelCircumferenceMm: app.settings.wheelCircumferenceMm,
+      totalMassKg: app.settings.weightKg + 9,
+    });
+    await bike.connect({ acceptAll });
+    setSource(bike);
+    toast(`${bike.name} に接続しました — ${bike.description}`, 'ok');
+  } catch (err) {
+    // ユーザーがダイアログを閉じただけのケースは通常のフローなので騒がない
+    if (err.name === 'NotFoundError' && /cancel|User cancelled/i.test(err.message)) {
+      return;
+    }
+    toast(`接続に失敗しました: ${err.message}`, 'error');
+  }
+}
+
 function updateBleAvailability() {
-  const supported = FtmsTrainer.isSupported;
+  const supported = BikeSensor.isSupported;
   const note = document.getElementById('ble-note');
   document.getElementById('connect-trainer').disabled = !supported;
+  document.getElementById('connect-any').disabled = !supported;
   document.getElementById('connect-hr').disabled = !supported;
   if (!supported) {
     note.textContent =
@@ -314,16 +338,12 @@ function updateBleAvailability() {
 }
 
 function bindRideScreen() {
-  document.getElementById('connect-trainer').addEventListener('click', async () => {
-    try {
-      const trainer = new FtmsTrainer();
-      await trainer.connect();
-      setSource(trainer);
-      toast(`${trainer.name} に接続しました`, 'ok');
-    } catch (err) {
-      toast(`接続に失敗しました: ${err.message}`, 'error');
-    }
-  });
+  document
+    .getElementById('connect-trainer')
+    .addEventListener('click', () => connectBike({ acceptAll: false }));
+  document
+    .getElementById('connect-any')
+    .addEventListener('click', () => connectBike({ acceptAll: true }));
 
   document.getElementById('connect-sim').addEventListener('click', async () => {
     const sim = new SimulatedTrainer({
@@ -393,9 +413,7 @@ function setSource(source) {
   document.getElementById('source-name').textContent = source.name;
   document.getElementById('source-status').textContent = source.isSimulated
     ? 'シミュレーター動作中'
-    : source.supportsGrade
-      ? '接続済み（勾配連動に対応）'
-      : '接続済み（勾配連動には非対応）';
+    : (source.description ?? '接続済み');
   document.getElementById('ride-start').disabled = false;
 
   source.addEventListener('disconnected', () => {

@@ -62,6 +62,7 @@
         <label>映像速度の倍率<input type="number" name="speedMultiplier" min="1" max="3" step="0.1"></label>
         <label>カメラ距離 (m)<input type="number" name="cameraRangeM" min="10" max="300" step="5"></label>
         <label>カメラ俯角 (度)<input type="number" name="cameraTilt" min="0" max="90" step="1"></label>
+        <label>ホイール周長 (mm)<input type="number" name="wheelCircumferenceMm" min="1000" max="2400" step="1"></label>
         <label class="check"><input type="checkbox" name="gradeEnabled"> 勾配連動を使う</label>
         <label class="check"><input type="checkbox" name="loop"> 終点で最初に戻る</label>
       </form>
@@ -164,9 +165,14 @@
         <h3>デバイス</h3>
         <p class="status" id="ble-note"></p>
         <div class="stack">
-          <button type="button" id="connect-trainer" class="primary">スマートトレーナーに接続</button>
+          <button type="button" id="connect-trainer" class="primary">バイクに接続</button>
+          <button type="button" id="connect-any">見つからない場合：全デバイスから選ぶ</button>
           <button type="button" id="connect-hr">心拍計に接続</button>
         </div>
+        <p class="muted">
+          一体型のエアロバイクは、サービスを広告していないことがあります。
+          上のボタンで出てこない場合は「全デバイスから選ぶ」をお試しください。
+        </p>
         <hr>
         <p class="muted">機材が無くても動作を確認できます。</p>
         <label class="slider">

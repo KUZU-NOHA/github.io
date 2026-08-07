@@ -23,6 +23,12 @@ import {
   kcalFromPower, kcalFromMet, estimateMet, zoneFor, maxHeartRate,
   CalorieAccumulator,
 } from '../app/js/ride/calories.js';
+import { parseCscMeasurement } from '../app/js/ble/csc.js';
+import { parseCyclingPowerMeasurement } from '../app/js/ble/cyclingPower.js';
+import {
+  speedFromPower, powerRequired, RevolutionCounter,
+  speedFromWheel, cadenceFromCrank,
+} from '../app/js/ride/physics.js';
 import { expandToPathPoints } from '../app/js/map/route.js';
 import { RideEngine } from '../app/js/ride/engine.js';
 import { currentStreak, kcalWithin } from '../app/js/store/sessions.js';
@@ -259,6 +265,177 @@ test('parseFeatureFlags: 対応機能ビットを読み出す', () => {
   assert.equal(f.power, true);
   assert.equal(f.simulation, true);
   assert.equal(f.resistanceLevel, false);
+});
+
+/* ============ CSC (0x1816) ============ */
+
+test('CSC: ホイールとクランクの両方を読み出す', () => {
+  // flags=0x03（両方あり）
+  const bytes = new Uint8Array([
+    0x03,
+    0x10, 0x00, 0x00, 0x00,  // 累積ホイール回転 16
+    0x00, 0x04,              // ホイールイベント時刻 1024 (=1秒)
+    0x20, 0x00,              // 累積クランク回転 32
+    0x00, 0x08,              // クランクイベント時刻 2048 (=2秒)
+  ]);
+  const d = parseCscMeasurement(new DataView(bytes.buffer));
+  assert.equal(d.cumulativeWheelRevs, 16);
+  assert.equal(d.lastWheelEventTime, 1024);
+  assert.equal(d.cumulativeCrankRevs, 32);
+  assert.equal(d.lastCrankEventTime, 2048);
+});
+
+test('CSC: クランクのみの機種を正しく読む（ホイール分ずれない）', () => {
+  const bytes = new Uint8Array([0x02, 0x20, 0x00, 0x00, 0x04]);
+  const d = parseCscMeasurement(new DataView(bytes.buffer));
+  assert.equal(d.cumulativeWheelRevs, undefined);
+  assert.equal(d.cumulativeCrankRevs, 32);
+  assert.equal(d.lastCrankEventTime, 1024);
+});
+
+/* ============ Cycling Power (0x1818) ============ */
+
+test('Cycling Power: パワーのみ（フラグ0）を読む', () => {
+  const bytes = new Uint8Array([0x00, 0x00, 0xfa, 0x00]); // 250 W
+  const d = parseCyclingPowerMeasurement(new DataView(bytes.buffer));
+  assert.equal(d.powerW, 250);
+});
+
+test('Cycling Power: パワー + クランク回転（ケイデンス取得の主経路）', () => {
+  // flags bit5 = クランク回転データあり
+  const bytes = new Uint8Array([
+    0x20, 0x00,        // flags
+    0xfa, 0x00,        // 250 W
+    0x40, 0x00,        // 累積クランク回転 64
+    0x00, 0x04,        // クランクイベント時刻 1024
+  ]);
+  const d = parseCyclingPowerMeasurement(new DataView(bytes.buffer));
+  assert.equal(d.powerW, 250);
+  assert.equal(d.cumulativeCrankRevs, 64);
+  assert.equal(d.lastCrankEventTime, 1024);
+});
+
+test('Cycling Power: ホイール+クランク両方でもオフセットがずれない', () => {
+  // flags bit4 + bit5
+  const bytes = new Uint8Array([
+    0x30, 0x00,
+    0xc8, 0x00,                    // 200 W
+    0x0a, 0x00, 0x00, 0x00,        // ホイール回転 10 (uint32)
+    0x00, 0x08,                    // ホイールイベント時刻 2048
+    0x14, 0x00,                    // クランク回転 20
+    0x00, 0x04,                    // クランクイベント時刻 1024
+  ]);
+  const d = parseCyclingPowerMeasurement(new DataView(bytes.buffer));
+  assert.equal(d.powerW, 200);
+  assert.equal(d.cumulativeWheelRevs, 10);
+  assert.equal(d.lastWheelEventTime, 2048);
+  assert.equal(d.cumulativeCrankRevs, 20);
+  assert.equal(d.lastCrankEventTime, 1024);
+});
+
+test('Cycling Power: 前方に可変長フィールドがあってもクランクを正しく読む', () => {
+  // bit0(バランス) + bit2(トルク) + bit5(クランク)
+  const bytes = new Uint8Array([
+    0x25, 0x00,
+    0xfa, 0x00,        // 250 W
+    0x64,              // バランス 100 → 50%
+    0x00, 0x02,        // 累積トルク
+    0x40, 0x00,        // クランク回転 64
+    0x00, 0x04,        // 時刻 1024
+  ]);
+  const d = parseCyclingPowerMeasurement(new DataView(bytes.buffer));
+  assert.equal(d.powerW, 250);
+  assert.equal(d.pedalPowerBalance, 50);
+  assert.equal(d.cumulativeCrankRevs, 64);
+});
+
+/* ============ 走行物理 ============ */
+
+test('speedFromPower: 平地 200W で 30km/h 前後になる', () => {
+  const kmh = speedFromPower(200, 0, 80);
+  assert.ok(kmh > 26 && kmh < 34, `実際: ${kmh}`);
+});
+
+test('speedFromPower: 同じパワーでも上り坂では遅くなる', () => {
+  const flat = speedFromPower(200, 0, 80);
+  const climb = speedFromPower(200, 5, 80);
+  assert.ok(climb < flat / 2, `平地 ${flat} / 5%坂 ${climb}`);
+});
+
+test('speedFromPower: 5%勾配の登坂速度が実走と整合する', () => {
+  // 総重量80kg・200W（2.5 W/kg）・5%勾配。
+  // 登坂の目安 VAM ≒ (W/kg) × 352 m/h から水平速度は 17km/h 前後で、
+  // 空気抵抗を含めると 15km/h 台に落ちる。
+  const kmh = speedFromPower(200, 5, 80);
+  assert.ok(kmh > 13 && kmh < 18, `実際: ${kmh}`);
+});
+
+test('speedFromPower: 平地の速度が実走と整合する', () => {
+  // 200W で 32〜35km/h（CdA 0.32 のロードバイク相当）
+  const kmh = speedFromPower(200, 0, 80);
+  assert.ok(kmh > 31 && kmh < 36, `実際: ${kmh}`);
+});
+
+test('speedFromPower: 重い人ほど登坂は遅く、平地では差が小さい', () => {
+  const lightClimb = speedFromPower(200, 5, 65);
+  const heavyClimb = speedFromPower(200, 5, 95);
+  assert.ok(lightClimb > heavyClimb, `軽 ${lightClimb} / 重 ${heavyClimb}`);
+
+  const lightFlat = speedFromPower(200, 0, 65);
+  const heavyFlat = speedFromPower(200, 0, 95);
+  assert.ok(Math.abs(lightFlat - heavyFlat) < 2, `軽 ${lightFlat} / 重 ${heavyFlat}`);
+});
+
+test('speedFromPower: パワー0や不正値では 0', () => {
+  assert.equal(speedFromPower(0, 0, 80), 0);
+  assert.equal(speedFromPower(-50, 0, 80), 0);
+  assert.equal(speedFromPower(NaN, 0, 80), 0);
+});
+
+test('powerRequired: 登坂ぶんのパワーが加算される', () => {
+  const flat = powerRequired(8, 0, 80);
+  const climb = powerRequired(8, 5, 80);
+  assert.ok(climb > flat, `平地 ${flat} / 坂 ${climb}`);
+});
+
+test('RevolutionCounter: 回転数/秒を算出する', () => {
+  const c = new RevolutionCounter({ timeResolution: 1024 });
+  assert.equal(c.update(0, 0), null);           // 初回は基準を取るだけ
+  const rps = c.update(10, 1024);               // 1秒で10回転
+  assert.ok(Math.abs(rps - 10) < 0.001, `実際: ${rps}`);
+});
+
+test('RevolutionCounter: uint16 の時刻巻き戻りを補正する', () => {
+  const c = new RevolutionCounter({ timeResolution: 1024 });
+  c.update(0, 65000);
+  // 65000 → 512 は巻き戻り。実際は (65536-65000+512)/1024 ≒ 1.03 秒
+  const rps = c.update(10, 512);
+  assert.ok(rps > 9 && rps < 11, `実際: ${rps}`);
+});
+
+test('RevolutionCounter: 時刻が進まない再通知では null を返す', () => {
+  const c = new RevolutionCounter({ timeResolution: 1024 });
+  c.update(10, 1024);
+  assert.equal(c.update(10, 1024), null);
+});
+
+test('RevolutionCounter: 停止が続けば 0 を返す', () => {
+  const c = new RevolutionCounter({ timeResolution: 1024 });
+  c.update(10, 1024);
+  let last = null;
+  for (let i = 0; i < 10; i++) last = c.update(10, 1024);
+  assert.equal(last, 0);
+});
+
+test('speedFromWheel: 周長 2105mm で毎秒5回転なら約37.9km/h', () => {
+  const kmh = speedFromWheel(5, 2105);
+  assert.ok(Math.abs(kmh - 37.89) < 0.1, `実際: ${kmh}`);
+  assert.equal(speedFromWheel(null, 2105), null);
+});
+
+test('cadenceFromCrank: 毎秒1.5回転なら 90rpm', () => {
+  assert.equal(cadenceFromCrank(1.5), 90);
+  assert.equal(cadenceFromCrank(null), null);
 });
 
 /* ============ 心拍 ============ */
