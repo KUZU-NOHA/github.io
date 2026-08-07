@@ -22,6 +22,7 @@ export class Hud {
       kcal: root.querySelector('[data-hud="kcal"]'),
       kcalNote: root.querySelector('[data-hud="kcalNote"]'),
       zone: root.querySelector('[data-hud="zone"]'),
+      speedNote: root.querySelector('[data-hud="speedNote"]'),
       progressBar: root.querySelector('[data-hud="progressBar"]'),
       progressText: root.querySelector('[data-hud="progressText"]'),
     };
@@ -37,6 +38,14 @@ export class Hud {
 
   update(s) {
     this._set('speed', s.speedKmh.toFixed(1));
+
+    // 倍率を使っているときは、実測との差が分かるようにしておく
+    this._set(
+      'speedNote',
+      s.speedMultiplier > 1
+        ? `×${s.speedMultiplier} (実測 ${s.rawSpeedKmh.toFixed(1)})`
+        : ''
+    );
     this._set('cadence', Math.round(s.cadenceRpm).toString());
     this._set('power', Math.round(s.powerW).toString());
     this._set('heartRate', s.heartRateBpm > 0 ? Math.round(s.heartRateBpm).toString() : '--');

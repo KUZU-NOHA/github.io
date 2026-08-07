@@ -176,7 +176,9 @@ function renderSettingsForm() {
     if (app.source && !app.source.isSimulated) {
       app.source.speedSource = app.settings.speedSource;
       app.source.wheelCircumferenceMm = app.settings.wheelCircumferenceMm;
-      // 出どころを変えたら平滑化の履歴も捨てる
+      app.source.bikeProfile = app.settings.bikeProfile;
+      app.source.totalMassKg = app.settings.weightKg + 9;
+      // 算出条件を変えたら平滑化の履歴も捨てる
       app.source._speedSmoother?.reset();
       document.getElementById('source-status').textContent = app.source.description;
     }
@@ -322,6 +324,7 @@ async function connectBike({ acceptAll }) {
       wheelCircumferenceMm: app.settings.wheelCircumferenceMm,
       totalMassKg: app.settings.weightKg + 9,
       speedSource: app.settings.speedSource,
+      bikeProfile: app.settings.bikeProfile,
     });
     await bike.connect({ acceptAll });
     setSource(bike);

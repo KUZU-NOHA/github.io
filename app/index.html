@@ -59,7 +59,15 @@
         <label>年齢<input type="number" name="age" min="10" max="100" step="1"></label>
         <label>目標体重 (kg)<input type="number" name="targetWeightKg" min="30" max="200" step="0.1"></label>
         <label>週間目標 (kcal)<input type="number" name="weeklyKcalGoal" min="0" step="100"></label>
-        <label>映像速度の倍率<input type="number" name="speedMultiplier" min="1" max="3" step="0.1"></label>
+        <label>車種（速さに影響）
+          <select name="bikeProfile">
+            <option value="tt">TTバイク（最速・150Wで約34km/h）</option>
+            <option value="road">ロードバイク（150Wで約30km/h）</option>
+            <option value="cross">クロスバイク（150Wで約28km/h）</option>
+            <option value="city">シティサイクル（150Wで約25km/h）</option>
+          </select>
+        </label>
+        <label>速度の倍率<input type="number" name="speedMultiplier" min="1" max="5" step="0.1"></label>
         <label>カメラ距離 (m)<input type="number" name="cameraRangeM" min="10" max="300" step="5"></label>
         <label>カメラ俯角 (度)<input type="number" name="cameraTilt" min="0" max="90" step="1"></label>
         <label>ホイール周長 (mm)<input type="number" name="wheelCircumferenceMm" min="1000" max="2400" step="1"></label>
@@ -74,8 +82,12 @@
         <label class="check"><input type="checkbox" name="loop"> 終点で最初に戻る</label>
       </form>
       <p class="muted">
-        映像速度の倍率を上げると、ゆっくり漕いでも景色が速く進みます。
-        短時間でも「遠くまで行った感」が出るので、continuity（継続）に効きます。
+        <strong>もっと速く走りたいときは2つの方法があります。</strong>
+        ① <strong>車種</strong>を速いものに変える — 空気抵抗が小さくなり、
+        同じ出力でも速く走れます（実走と同じ物理です）。
+        ② <strong>速度の倍率</strong>を上げる — 表示速度も景色の進みも
+        そのまま倍になります。短時間でも「遠くまで行った感」が出るので、
+        続けるモチベーションに効きます。倍率を使っているときは実測値も併記されます。
       </p>
       <p class="muted">
         <strong>速度が異常な値になったり大きく暴れる場合</strong>は「速度の求め方」を
@@ -145,6 +157,7 @@
         <div class="hud-main">
           <div class="metric metric-lg">
             <span class="value" data-hud="speed">0.0</span><span class="unit">km/h</span>
+            <small class="note-inline" data-hud="speedNote"></small>
           </div>
           <div class="metric">
             <span class="value" data-hud="power">0</span><span class="unit">W</span>

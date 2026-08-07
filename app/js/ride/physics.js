@@ -14,6 +14,24 @@ const DEFAULT_CRR = 0.005; // 転がり抵抗係数（アスファルト + ロ�
 const DEFAULT_CDA = 0.32;  // 空気抵抗係数 × 前面投影面積 [m^2]
 
 /**
+ * 車種プロファイル。同じ出力でも到達速度が変わる。
+ *
+ * 空気抵抗(cda)と転がり抵抗(crr)は実走のロードバイク研究で使われる代表値。
+ * 速い車種を選ぶほど、同じワット数でも速く走れる。
+ * 総重量80kg・150W・平地での目安速度を label に添えている。
+ */
+export const BIKE_PROFILES = {
+  tt:    { label: 'TTバイク（最速）',   cda: 0.24, crr: 0.004, approxKmhAt150W: 34 },
+  road:  { label: 'ロードバイク',       cda: 0.32, crr: 0.005, approxKmhAt150W: 30 },
+  cross: { label: 'クロスバイク',       cda: 0.40, crr: 0.006, approxKmhAt150W: 28 },
+  city:  { label: 'シティサイクル',     cda: 0.55, crr: 0.008, approxKmhAt150W: 25 },
+};
+
+export function profileFor(key) {
+  return BIKE_PROFILES[key] ?? BIKE_PROFILES.road;
+}
+
+/**
  * ある速度で走るのに必要なパワー[W]。
  * 転がり抵抗 + 重力（登坂） + 空気抵抗 の合計。
  *

@@ -31,6 +31,8 @@ export const DEFAULT_SETTINGS = {
   // 一体型エアロバイクのホイール回転数は内部カウントで実距離と対応しない
   // ことが多いため、既定ではパワーからの逆算を優先する
   speedSource: 'auto',
+  // 車種。空気抵抗と転がり抵抗が変わり、同じ出力での到達速度に効く
+  bikeProfile: 'road',
 };
 
 export function getApiKey() {

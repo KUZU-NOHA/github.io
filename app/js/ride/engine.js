@@ -82,6 +82,14 @@ export class RideEngine extends EventTarget {
       : 0;
   }
 
+  /**
+   * 実際に画面へ出す速度。映像速度の倍率を掛けた「仮想速度」。
+   * 距離もこの速度で積算するため、速度計・景色・走行距離が全て一致する。
+   */
+  get effectiveSpeedKmh() {
+    return this.live.speedKmh * this.speedMultiplier;
+  }
+
   get isRiding() {
     return this.state === RideState.RIDING;
   }
@@ -151,8 +159,9 @@ export class RideEngine extends EventTarget {
     if (dtSec <= 0) return;
     this.elapsedSec += dtSec;
 
-    // 距離の積算（映像速度の倍率を掛ける）
-    const metersPerSec = (this.live.speedKmh / 3.6) * this.speedMultiplier;
+    // 距離の積算（映像速度の倍率を掛ける）。
+    // 表示速度にも同じ倍率を掛けるので、速度計と景色の進みが一致する。
+    const metersPerSec = (this.effectiveSpeedKmh / 3.6);
     this.distanceM += metersPerSec * dtSec;
 
     const total = this.path.totalDistanceM;
@@ -184,7 +193,8 @@ export class RideEngine extends EventTarget {
 
     // 最大値は「値を消費するここ」で採る。心拍計など data イベントを
     // 経由せず live に直接書き込む経路があるため、_handleData では漏れる。
-    this.maxSpeedKmh = Math.max(this.maxSpeedKmh, this.live.speedKmh);
+    // 速度は表示・距離と揃えるため倍率を掛けた値で記録する。
+    this.maxSpeedKmh = Math.max(this.maxSpeedKmh, this.effectiveSpeedKmh);
     this.maxPowerW = Math.max(this.maxPowerW, this.live.powerW);
 
     // 平均値の材料
@@ -228,7 +238,10 @@ export class RideEngine extends EventTarget {
       altitude: this.altitude ?? 0,
       position: this.position,
       heading: this.smoothHeading,
-      speedKmh: this.live.speedKmh,
+      speedKmh: this.effectiveSpeedKmh,
+      // 倍率を掛ける前の実測速度。倍率を使っているか判別する用
+      rawSpeedKmh: this.live.speedKmh,
+      speedMultiplier: this.speedMultiplier,
       cadenceRpm: this.live.cadenceRpm,
       powerW: this.live.powerW,
       heartRateBpm: this.live.heartRateBpm,

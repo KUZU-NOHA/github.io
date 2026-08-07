@@ -30,7 +30,7 @@ import {
 } from './wahoo.js';
 import {
   RevolutionCounter, Smoother, speedFromWheel, cadenceFromCrank, speedFromPower,
-  isPlausibleSpeed, isPlausibleCadence,
+  isPlausibleSpeed, isPlausibleCadence, profileFor,
 } from '../ride/physics.js';
 
 const INDOOR_BIKE_DATA = 0x2ad2;
@@ -176,10 +176,13 @@ export class BikeSensor extends EventTarget {
     wheelCircumferenceMm = 2105,
     totalMassKg = 80,
     speedSource = 'auto',
+    bikeProfile = 'road',
   } = {}) {
     super();
     this.wheelCircumferenceMm = wheelCircumferenceMm;
     this.totalMassKg = totalMassKg;
+    /** 車種。同じ出力でも到達速度が変わる */
+    this.bikeProfile = bikeProfile;
     /** 'auto' | 'power' | 'sensor' */
     this.speedSource = speedSource;
     /** 実際に採用した速度の出どころ。UI 表示用 */
@@ -592,7 +595,11 @@ export class BikeSensor extends EventTarget {
 
     const fromPower = () => {
       this.activeSpeedSource = 'power';
-      return speedFromPower(this._latest.powerW, this.currentGrade, this.totalMassKg);
+      const p = profileFor(this.bikeProfile);
+      return speedFromPower(this._latest.powerW, this.currentGrade, this.totalMassKg, {
+        cda: p.cda,
+        crr: p.crr,
+      });
     };
 
     if (this.speedSource === 'power') {

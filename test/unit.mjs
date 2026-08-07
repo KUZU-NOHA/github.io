@@ -31,6 +31,7 @@ import { parseCyclingPowerMeasurement } from '../app/js/ble/cyclingPower.js';
 import {
   speedFromPower, powerRequired, RevolutionCounter, Smoother,
   speedFromWheel, cadenceFromCrank, isPlausibleSpeed, isPlausibleCadence,
+  BIKE_PROFILES, profileFor,
 } from '../app/js/ride/physics.js';
 import { expandToPathPoints } from '../app/js/map/route.js';
 import { RideEngine } from '../app/js/ride/engine.js';
@@ -435,6 +436,32 @@ test('speedFromPower: 重い人ほど登坂は遅く、平地では差が小さ�
   assert.ok(Math.abs(lightFlat - heavyFlat) < 2, `軽 ${lightFlat} / 重 ${heavyFlat}`);
 });
 
+test('BIKE_PROFILES: 速い車種ほど同じ出力で速く走れる', () => {
+  const at150W = (key) => {
+    const p = profileFor(key);
+    return speedFromPower(150, 0, 80, { cda: p.cda, crr: p.crr });
+  };
+  const tt = at150W('tt');
+  const road = at150W('road');
+  const cross = at150W('cross');
+  const city = at150W('city');
+
+  assert.ok(tt > road && road > cross && cross > city,
+    `TT ${tt} > ロード ${road} > クロス ${cross} > シティ ${city}`);
+  // 表示している目安値と実際の計算が一致していること
+  for (const key of Object.keys(BIKE_PROFILES)) {
+    const actual = at150W(key);
+    const claimed = BIKE_PROFILES[key].approxKmhAt150W;
+    assert.ok(Math.abs(actual - claimed) < 1.5,
+      `${key}: 表示 ${claimed} / 実際 ${actual.toFixed(1)}`);
+  }
+});
+
+test('profileFor: 未知のキーはロードバイクにフォールバックする', () => {
+  assert.equal(profileFor('unknown'), BIKE_PROFILES.road);
+  assert.equal(profileFor(undefined), BIKE_PROFILES.road);
+});
+
 test('speedFromPower: パワー0や不正値では 0', () => {
   assert.equal(speedFromPower(0, 0, 80), 0);
   assert.equal(speedFromPower(-50, 0, 80), 0);
@@ -673,7 +700,7 @@ test('RideEngine: 速度から距離を積算する', () => {
   assert.ok(Math.abs(engine.elapsedSec - 3) < 0.001);
 });
 
-test('RideEngine: 映像速度の倍率が距離に反映される', () => {
+test('RideEngine: 速度の倍率が距離に反映される', () => {
   const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.1, lng: 139 }]);
   const engine = new RideEngine({
     path, source: makeStubSource(), elevations: [], speedMultiplier: 2,
@@ -681,6 +708,44 @@ test('RideEngine: 映像速度の倍率が距離に反映される', () => {
   engine.live.speedKmh = 36;
   engine.advance(1);
   assert.ok(Math.abs(engine.distanceM - 20) < 0.001, `実際: ${engine.distanceM}`);
+});
+
+test('RideEngine: 倍率は表示速度にも掛かり、距離と一致する', () => {
+  // 速度計が実測のまま、距離だけ倍になると辻褄が合わない。
+  // 表示・景色・距離の3つが同じ速度で動くこと。
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.5, lng: 139 }]);
+  const engine = new RideEngine({
+    path, source: makeStubSource(), elevations: [], speedMultiplier: 1.5,
+  });
+  engine.live.speedKmh = 20;
+  engine.advance(10);
+
+  const s = engine.snapshot();
+  assert.equal(s.speedKmh, 30);        // 20 × 1.5
+  assert.equal(s.rawSpeedKmh, 20);     // 実測値も参照できる
+  assert.equal(s.speedMultiplier, 1.5);
+  // 30km/h で10秒 = 83.3m
+  assert.ok(Math.abs(engine.distanceM - (30 / 3.6) * 10) < 0.001,
+    `実際: ${engine.distanceM}`);
+});
+
+test('RideEngine: 倍率1のときは表示と実測が一致する', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.5, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+  engine.live.speedKmh = 25;
+  engine.advance(1);
+  const s = engine.snapshot();
+  assert.equal(s.speedKmh, s.rawSpeedKmh);
+});
+
+test('RideEngine: 最大速度も倍率を掛けた値で記録する', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({
+    path, source: makeStubSource(), elevations: [], speedMultiplier: 2,
+  });
+  engine.live.speedKmh = 20;
+  engine.advance(1);
+  assert.equal(engine.summary().maxSpeedKmh, 40);
 });
 
 test('RideEngine: 勾配をデータ源へ送る', () => {
