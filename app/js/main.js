@@ -16,7 +16,7 @@ import {
 import { View3D } from './map/view3d.js';
 import { Fallback2D } from './map/fallback2d.js';
 import { StreetViewSpot, CheckpointTracker } from './map/streetview.js';
-import { BikeSensor } from './ble/bike.js';
+import { BikeSensor, diagnoseDevice } from './ble/bike.js';
 import { HeartRateMonitor } from './ble/heartRate.js';
 import { SimulatedTrainer } from './ble/simulator.js';
 import { RideEngine, RideState } from './ride/engine.js';
@@ -321,12 +321,68 @@ async function connectBike({ acceptAll }) {
   }
 }
 
+/**
+ * デバイスが何に対応しているかを調べて画面に出す。
+ * 「繋がるのにデータが来ない」機種の切り分け用。
+ */
+async function runDiagnosis() {
+  const box = document.getElementById('diagnosis-result');
+  box.hidden = false;
+  box.textContent = '接続して調査中…';
+
+  try {
+    const result = await diagnoseDevice(true);
+    const lines = [`デバイス名: ${result.name}`, ''];
+
+    if (result.services.length === 0) {
+      lines.push('既知のサービスは見つかりませんでした。');
+      lines.push('メーカー独自プロトコルのみの機種と思われます。');
+    } else {
+      for (const s of result.services) {
+        lines.push(`■ ${s.label}`);
+        lines.push(`  ${s.uuid}`);
+        for (const c of s.characteristics) {
+          lines.push(`   - ${shortUuid(c.uuid)} [${c.properties.join(',')}]`);
+        }
+        lines.push('');
+      }
+    }
+
+    const text = lines.join('\n');
+    box.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.textContent = text;
+    const copy = document.createElement('button');
+    copy.textContent = 'この結果をコピー';
+    copy.addEventListener('click', () => {
+      navigator.clipboard.writeText(text).then(
+        () => toast('コピーしました', 'ok'),
+        () => toast('コピーに失敗しました。手動で選択してください', 'warn')
+      );
+    });
+    box.append(pre, copy);
+  } catch (err) {
+    if (err.name === 'NotFoundError' && /cancel|User cancelled/i.test(err.message)) {
+      box.hidden = true;
+      return;
+    }
+    box.textContent = `診断に失敗しました: ${err.message}`;
+  }
+}
+
+/** 128bit に正規化された UUID を、標準サービスなら短い表記に戻す */
+function shortUuid(uuid) {
+  const m = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(uuid);
+  return m ? `0x${m[1].toUpperCase()}` : uuid;
+}
+
 function updateBleAvailability() {
   const supported = BikeSensor.isSupported;
   const note = document.getElementById('ble-note');
   document.getElementById('connect-trainer').disabled = !supported;
   document.getElementById('connect-any').disabled = !supported;
   document.getElementById('connect-hr').disabled = !supported;
+  document.getElementById('diagnose-device').disabled = !supported;
   if (!supported) {
     note.textContent =
       '⚠️ このブラウザは Web Bluetooth に非対応です。PC/Mac の Chrome、または iPhone では App Store の「WebBLE」ブラウザをお使いください。シミュレーターは今のまま使えます。';
@@ -344,6 +400,7 @@ function bindRideScreen() {
   document
     .getElementById('connect-any')
     .addEventListener('click', () => connectBike({ acceptAll: true }));
+  document.getElementById('diagnose-device').addEventListener('click', runDiagnosis);
 
   document.getElementById('connect-sim').addEventListener('click', async () => {
     const sim = new SimulatedTrainer({

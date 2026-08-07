@@ -247,6 +247,18 @@ button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
   margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--border);
 }
 
+.diagnosis {
+  margin-top: .7rem; font-size: .8rem;
+}
+.diagnosis pre {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: .6rem .7rem; margin: 0 0 .5rem;
+  max-height: 260px; overflow: auto;
+  white-space: pre-wrap; word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem;
+  line-height: 1.5;
+}
+
 /* ---------- ダッシュボード ---------- */
 
 .stat-grid {
