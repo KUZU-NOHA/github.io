@@ -160,11 +160,22 @@ try {
     Math.abs(stillPaused.distance - paused.distance) < 0.01,
     `${paused.distance} → ${stillPaused.distance} km`);
 
-  /* ---- 終了と記録 ---- */
+  /* ---- 終了とサマリー ---- */
   page.on('dialog', (d) => d.accept());
   await page.click('#ride-finish');
   await page.waitForTimeout(800);
-  check('終了後に記録画面へ移る', await page.locator('#screen-dashboard').isVisible());
+
+  check('走行完了サマリーが表示される', await page.locator('#ride-summary').isVisible());
+  const summaryDistance = await page.locator('[data-summary="distance"]').innerText();
+  check('サマリーに距離が出る', parseFloat(summaryDistance) > 0, `${summaryDistance} km`);
+  const summaryKcalNote = await page.locator('[data-summary="kcalNote"]').innerText();
+  check('サマリーにカロリー算出方式が出る', summaryKcalNote.length > 0, summaryKcalNote);
+
+  await page.click('#ride-summary [data-summary-close]');
+  await page.waitForTimeout(200);
+  check('サマリーを閉じると記録画面へ移る',
+    await page.locator('#screen-dashboard').isVisible()
+    && !(await page.locator('#ride-summary').isVisible()));
 
   const sessionItems = await page.locator('[data-dash="sessionList"] li:not(.empty)').count();
   check('走行記録が保存される', sessionItems > 0, `${sessionItems} 件`);
@@ -195,9 +206,26 @@ try {
     profileHtml.trim() === '' ? '標高データなしのため空（想定どおり）' : '描画あり');
 
   await page.click('#ride-finish');
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(800);
+  await page.click('#ride-summary [data-summary-close]');
+  await page.waitForTimeout(200);
   const sessions2 = await page.locator('[data-dash="sessionList"] li:not(.empty)').count();
   check('2回目の記録も保存される', sessions2 >= 2, `${sessions2} 件`);
+
+  /* ---- ダッシュボードの新機能 ---- */
+  const goalText = await page.locator('[data-dash="goalPrediction"]').innerText();
+  check('目標体重の達成予測が表示される', goalText.length > 0, goalText.slice(0, 40));
+
+  await page.click('.session-list details summary');
+  await page.waitForTimeout(150);
+  const detailVisible = await page.locator('.session-list .session-detail').first().isVisible();
+  check('セッション詳細を開ける', detailVisible);
+
+  const csvDownload = page.waitForEvent('download');
+  await page.click('#export-csv');
+  const csv = await csvDownload;
+  check('CSV エクスポートが動く', csv.suggestedFilename().endsWith('.csv'),
+    csv.suggestedFilename());
 
   /* ---- コンソールエラー ---- */
   check('コンソールエラーが出ない', consoleErrors.length === 0,

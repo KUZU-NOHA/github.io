@@ -7,8 +7,9 @@
 
 import {
   listSessions, listWeights, saveWeight, kcalWithin, currentStreak,
-  exportAll, clearAll,
+  exportAll, clearAll, zoneTotals, predictGoalDate, sessionsToCsv,
 } from '../store/sessions.js';
+import { HEART_RATE_ZONES } from '../ride/calories.js';
 import { formatDuration } from './hud.js';
 
 export class Dashboard {
@@ -19,9 +20,94 @@ export class Dashboard {
 
   async refresh() {
     const [sessions, weights] = await Promise.all([listSessions(), listWeights()]);
+    this.sessions = sessions;
     this._renderStats(sessions, weights);
+    this._renderZones(sessions);
     this._renderWeightChart(weights);
+    this._renderGoal(weights);
     this._renderSessions(sessions);
+  }
+
+  /** 直近7日の心拍ゾーン滞在時間（要件 F-505） */
+  _renderZones(sessions) {
+    const wrap = this.root.querySelector('[data-dash="zones"]');
+    const empty = this.root.querySelector('[data-dash="zonesEmpty"]');
+    if (!wrap) return;
+
+    const totals = zoneTotals(sessions, 7);
+    const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+
+    if (sum < 1) {
+      wrap.innerHTML = '';
+      if (empty) empty.hidden = false;
+      return;
+    }
+    if (empty) empty.hidden = true;
+
+    const bar = HEART_RATE_ZONES.map((z) => {
+      const pct = ((totals[z.key] ?? 0) / sum) * 100;
+      return pct < 0.5
+        ? ''
+        : `<span class="zone-seg" style="width:${pct.toFixed(1)}%;background:${z.color}"
+                 title="${z.label} ${formatDuration(totals[z.key])}"></span>`;
+    }).join('');
+
+    const legend = HEART_RATE_ZONES.map((z) => {
+      const sec = totals[z.key] ?? 0;
+      if (sec < 1) return '';
+      return `<li${z.key === 'z2' ? ' class="is-highlight"' : ''}>
+          <span class="dot" style="background:${z.color}"></span>
+          ${z.label}<strong>${formatDuration(sec)}</strong>
+        </li>`;
+    }).join('');
+
+    wrap.innerHTML = `<div class="zone-bar">${bar}</div><ul class="zone-legend">${legend}</ul>`;
+  }
+
+  /** 目標体重の達成予測（要件 F-507） */
+  _renderGoal(weights) {
+    const el = this.root.querySelector('[data-dash="goalPrediction"]');
+    if (!el) return;
+
+    const target = this.settings.targetWeightKg;
+    const r = predictGoalDate(weights, target);
+
+    const pace = (kgPerWeek) =>
+      `（現在のペース: 週 ${kgPerWeek > 0 ? '+' : ''}${kgPerWeek.toFixed(2)} kg）`;
+
+    switch (r.status) {
+      case 'ok': {
+        const d = r.date;
+        el.innerHTML = `目標 ${target} kg の到達予測は
+          <strong>${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日ごろ</strong>
+          （あと ${r.daysLeft} 日）${pace(r.kgPerWeek)}`;
+        el.className = 'goal-prediction is-ok';
+        break;
+      }
+      case 'reached':
+        el.textContent = `目標 ${target} kg を達成しています。`;
+        el.className = 'goal-prediction is-ok';
+        break;
+      case 'not-approaching':
+        el.innerHTML = `現在の推移では目標に近づいていません ${pace(r.kgPerWeek)}`;
+        el.className = 'goal-prediction is-warn';
+        break;
+      case 'too-far':
+        el.innerHTML = `このペースだと達成まで2年以上かかります ${pace(r.kgPerWeek)}`;
+        el.className = 'goal-prediction is-warn';
+        break;
+      case 'need-more-days':
+        el.textContent = `予測にはあと ${r.need} 日ぶんの記録が必要です。`;
+        el.className = 'goal-prediction';
+        break;
+      case 'need-more-data':
+        el.textContent = `予測にはあと ${r.need ?? 1} 回ぶんの体重記録が必要です。`;
+        el.className = 'goal-prediction';
+        break;
+      default:
+        el.textContent = '設定画面で目標体重を入力すると達成予測が出ます。';
+        el.className = 'goal-prediction';
+    }
   }
 
   _renderStats(sessions, weights) {
@@ -116,7 +202,7 @@ export class Dashboard {
     }
 
     list.innerHTML = sessions
-      .slice(0, 20)
+      .slice(0, 30)
       .map((s) => {
         const d = new Date(s.startedAt);
         const date = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -124,19 +210,50 @@ export class Dashboard {
         const est = s.calorieIsEstimate ? '<span class="tag">推定</span>' : '';
         return `
           <li>
-            <div class="session-head">
-              <strong>${escapeHtml(s.routeName || 'ライド')}</strong>
-              <span class="muted">${date}</span>
-            </div>
-            <div class="session-stats">
-              <span>${km} km</span>
-              <span>${formatDuration(s.elapsedSec)}</span>
-              <span>${s.kcal} kcal ${est}</span>
-              ${s.avgPowerW > 0 ? `<span>平均 ${s.avgPowerW} W</span>` : ''}
-            </div>
+            <details>
+              <summary>
+                <div class="session-head">
+                  <strong>${escapeHtml(s.routeName || 'ライド')}</strong>
+                  <span class="muted">${date}</span>
+                </div>
+                <div class="session-stats">
+                  <span>${km} km</span>
+                  <span>${formatDuration(s.elapsedSec)}</span>
+                  <span>${s.kcal} kcal ${est}</span>
+                  ${s.avgPowerW > 0 ? `<span>平均 ${s.avgPowerW} W</span>` : ''}
+                </div>
+              </summary>
+              ${this._sessionDetail(s)}
+            </details>
           </li>`;
       })
       .join('');
+  }
+
+  _sessionDetail(s) {
+    const rows = [
+      ['平均速度', s.avgSpeedKmh > 0 ? `${s.avgSpeedKmh} km/h` : '--'],
+      ['最高速度', s.maxSpeedKmh > 0 ? `${s.maxSpeedKmh} km/h` : '--'],
+      ['平均パワー', s.avgPowerW > 0 ? `${s.avgPowerW} W` : '--'],
+      ['最大パワー', s.maxPowerW > 0 ? `${s.maxPowerW} W` : '--'],
+      ['平均心拍', s.avgHeartRateBpm > 0 ? `${s.avgHeartRateBpm} bpm` : '--'],
+      ['カロリー算出', s.calorieIsEstimate ? 'METs による推定' : `パワー実測 ${s.kj ?? 0} kJ`],
+    ];
+
+    const zoneTotal = Object.values(s.zoneSeconds ?? {}).reduce((a, b) => a + b, 0);
+    const zones = zoneTotal >= 1
+      ? `<div class="zone-bar">${HEART_RATE_ZONES.map((z) => {
+          const pct = ((s.zoneSeconds[z.key] ?? 0) / zoneTotal) * 100;
+          return pct < 0.5 ? ''
+            : `<span class="zone-seg" style="width:${pct.toFixed(1)}%;background:${z.color}"
+                     title="${z.label} ${formatDuration(s.zoneSeconds[z.key])}"></span>`;
+        }).join('')}</div>`
+      : '<p class="muted">心拍データがありません</p>';
+
+    return `<div class="session-detail">
+        <dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+        ${zones}
+      </div>`;
   }
 
   async addWeight(weightKg, bodyFatPct) {
@@ -147,19 +264,41 @@ export class Dashboard {
 
   async exportJson() {
     const data = await exportAll();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vcycling-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    download(
+      JSON.stringify(data, null, 2),
+      'application/json',
+      `vcycling-${today()}.json`
+    );
+  }
+
+  /** 表計算ソフトで開ける形式。Excel のために BOM を付ける */
+  async exportCsv() {
+    const sessions = await listSessions();
+    download(
+      `﻿${sessionsToCsv(sessions)}`,
+      'text/csv;charset=utf-8',
+      `vcycling-${today()}.csv`
+    );
   }
 
   async clear() {
     await clearAll();
     await this.refresh();
   }
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function download(content, mimeType, filename) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function movingAverage(values, window) {

@@ -22,7 +22,8 @@ import { SimulatedTrainer } from './ble/simulator.js';
 import { RideEngine, RideState } from './ride/engine.js';
 import { Hud, renderElevationProfile, formatDuration } from './ui/hud.js';
 import { Dashboard } from './ui/dashboard.js';
-import { saveSession } from './store/sessions.js';
+import { RideSummary } from './ui/summary.js';
+import { saveSession, listSessions, kcalWithin, currentStreak } from './store/sessions.js';
 
 const app = {
   settings: loadSettings(),
@@ -66,6 +67,8 @@ function toast(message, kind = 'info') {
 async function init() {
   app.dashboard = new Dashboard(document.getElementById('screen-dashboard'), app.settings);
   app.hud = new Hud(document.getElementById('screen-ride'), { age: app.settings.age });
+  app.summary = new RideSummary(document.getElementById('ride-summary'));
+  app.summary.onClose = () => showScreen('dashboard');
 
   bindNav();
   bindSetup();
@@ -631,17 +634,33 @@ function togglePause() {
 
 async function onFinish(summary) {
   document.getElementById('ride-stage').classList.remove('is-riding');
+  const session = { ...summary, routeName: app.route.name };
+
   try {
-    await saveSession({ ...summary, routeName: app.route.name });
+    await saveSession(session);
+  } catch (err) {
+    toast(`記録の保存に失敗しました: ${err.message}`, 'error');
+  }
+
+  await app.dashboard.refresh();
+
+  // 走り終えた直後に成果を見せる。継続率に直接効く場面なので、
+  // トーストで流さずきちんと出す
+  try {
+    const sessions = await listSessions();
+    app.summary.show(session, {
+      weekKcal: kcalWithin(sessions, 7),
+      weekGoal: app.settings.weeklyKcalGoal,
+      streak: currentStreak(sessions),
+    });
+  } catch {
+    // サマリーが出せなくても記録は残っているので致命的ではない
     toast(
       `お疲れさまでした！ ${(summary.distanceM / 1000).toFixed(2)} km / ${formatDuration(summary.elapsedSec)} / ${summary.kcal} kcal`,
       'ok'
     );
-  } catch (err) {
-    toast(`記録の保存に失敗しました: ${err.message}`, 'error');
+    showScreen('dashboard');
   }
-  await app.dashboard.refresh();
-  showScreen('dashboard');
 }
 
 /* ---------------- ダッシュボード ---------------- */
@@ -662,6 +681,10 @@ function bindDashboard() {
 
   document.getElementById('export-data').addEventListener('click', () =>
     app.dashboard.exportJson()
+  );
+
+  document.getElementById('export-csv').addEventListener('click', () =>
+    app.dashboard.exportCsv()
   );
 
   document.getElementById('clear-data').addEventListener('click', async () => {

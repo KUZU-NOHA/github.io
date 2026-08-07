@@ -122,7 +122,112 @@ export function currentStreak(sessions) {
   return streak;
 }
 
+/** 期間内のセッションの心拍ゾーン滞在時間を合計する（秒） */
+export function zoneTotals(sessions, days = 7) {
+  const since = Date.now() - days * 86400_000;
+  const totals = {};
+  for (const s of sessions) {
+    if (new Date(s.startedAt).getTime() < since) continue;
+    for (const [key, sec] of Object.entries(s.zoneSeconds ?? {})) {
+      totals[key] = (totals[key] ?? 0) + sec;
+    }
+  }
+  return totals;
+}
+
+/**
+ * 体重の推移から目標達成日を予測する。
+ *
+ * 日々の体重は水分などで上下するため、単純な差分ではなく
+ * 最小二乗法で傾きを求める。判断材料が足りないときは推測しない。
+ *
+ * @param {Array} weights listWeights() の戻り値（日付昇順）
+ * @param {number} targetKg 目標体重
+ * @returns {{status: string, date?: Date, daysLeft?: number, kgPerWeek?: number}}
+ */
+export function predictGoalDate(weights, targetKg) {
+  if (!Number.isFinite(targetKg)) return { status: 'no-target' };
+  if (weights.length < 4) return { status: 'need-more-data', need: 4 - weights.length };
+
+  const t0 = new Date(weights[0].date).getTime();
+  const points = weights.map((w) => ({
+    x: (new Date(w.date).getTime() - t0) / 86400_000, // 経過日数
+    y: w.weightKg,
+  }));
+
+  const spanDays = points[points.length - 1].x;
+  if (spanDays < 7) return { status: 'need-more-days', need: Math.ceil(7 - spanDays) };
+
+  // 最小二乗法で傾き（kg/日）を求める
+  const n = points.length;
+  const sumX = points.reduce((a, p) => a + p.x, 0);
+  const sumY = points.reduce((a, p) => a + p.y, 0);
+  const sumXY = points.reduce((a, p) => a + p.x * p.y, 0);
+  const sumXX = points.reduce((a, p) => a + p.x * p.x, 0);
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0) return { status: 'need-more-data' };
+
+  const slope = (n * sumXY - sumX * sumY) / denom;   // kg/日
+  const intercept = (sumY - slope * sumX) / n;
+  const current = slope * spanDays + intercept;      // 回帰直線上の現在値
+
+  const remaining = targetKg - current;
+  if (Math.abs(remaining) < 0.3) return { status: 'reached' };
+
+  // 目標に近づく向きに変化しているか
+  if (slope === 0 || Math.sign(remaining) !== Math.sign(slope)) {
+    return { status: 'not-approaching', kgPerWeek: slope * 7 };
+  }
+
+  const daysLeft = remaining / slope;
+  // 何年も先の予測は実用的でないので出さない
+  if (daysLeft > 730) return { status: 'too-far', kgPerWeek: slope * 7 };
+
+  const date = new Date(Date.now() + daysLeft * 86400_000);
+  return {
+    status: 'ok',
+    date,
+    daysLeft: Math.ceil(daysLeft),
+    kgPerWeek: slope * 7,
+  };
+}
+
 /* ---------- エクスポート / 全削除 ---------- */
+
+/** 走行記録を CSV にする（表計算ソフトで開ける形式） */
+export function sessionsToCsv(sessions) {
+  const header = [
+    '日時', 'ルート', '距離km', '時間秒', '消費kcal', 'カロリー算出',
+    '平均W', '最大W', '平均心拍', '平均速度kmh', '最高速度kmh',
+    'Z1秒', 'Z2秒', 'Z3秒', 'Z4秒', 'Z5秒',
+  ];
+  const rows = sessions.map((s) => [
+    s.startedAt,
+    s.routeName ?? '',
+    ((s.distanceM ?? 0) / 1000).toFixed(2),
+    s.elapsedSec ?? 0,
+    s.kcal ?? 0,
+    s.calorieIsEstimate ? 'METs推定' : 'パワー実測',
+    s.avgPowerW ?? 0,
+    s.maxPowerW ?? 0,
+    s.avgHeartRateBpm ?? 0,
+    s.avgSpeedKmh ?? 0,
+    s.maxSpeedKmh ?? 0,
+    s.zoneSeconds?.z1 ?? 0,
+    s.zoneSeconds?.z2 ?? 0,
+    s.zoneSeconds?.z3 ?? 0,
+    s.zoneSeconds?.z4 ?? 0,
+    s.zoneSeconds?.z5 ?? 0,
+  ]);
+  return [header, ...rows]
+    .map((r) => r.map(csvCell).join(','))
+    .join('\n');
+}
+
+function csvCell(value) {
+  const s = String(value ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
 
 export async function exportAll() {
   const [sessions, weights] = await Promise.all([listSessions(), listWeights()]);

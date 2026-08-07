@@ -35,7 +35,9 @@ import {
 } from '../app/js/ride/physics.js';
 import { expandToPathPoints } from '../app/js/map/route.js';
 import { RideEngine } from '../app/js/ride/engine.js';
-import { currentStreak, kcalWithin } from '../app/js/store/sessions.js';
+import {
+  currentStreak, kcalWithin, zoneTotals, predictGoalDate, sessionsToCsv,
+} from '../app/js/store/sessions.js';
 
 /* ============ 地理計算 ============ */
 
@@ -871,4 +873,130 @@ test('kcalWithin: 期間内のカロリーだけを合計する', () => {
   const sessions = [mk(1, 300), mk(3, 200), mk(20, 500)];
   assert.equal(kcalWithin(sessions, 7), 500);
   assert.equal(kcalWithin(sessions, 30), 1000);
+});
+
+test('zoneTotals: 期間内の心拍ゾーン滞在時間を合計する', () => {
+  const mk = (offsetDays, zoneSeconds) => {
+    const d = new Date();
+    d.setDate(d.getDate() - offsetDays);
+    return { startedAt: d.toISOString(), zoneSeconds };
+  };
+  const sessions = [
+    mk(1, { z2: 600, z3: 300 }),
+    mk(3, { z2: 400, z4: 100 }),
+    mk(20, { z2: 9999 }), // 期間外
+  ];
+  const t = zoneTotals(sessions, 7);
+  assert.equal(t.z2, 1000);
+  assert.equal(t.z3, 300);
+  assert.equal(t.z4, 100);
+  assert.equal(t.z5, undefined);
+});
+
+test('zoneTotals: 心拍データが無いセッションでも壊れない', () => {
+  const s = [{ startedAt: new Date().toISOString() }];
+  assert.deepEqual(zoneTotals(s, 7), {});
+});
+
+/* ============ 目標体重の達成予測 ============ */
+
+/** offsetDays 日前から1日おきに weights を並べたテストデータを作る */
+function weightSeries(values, stepDays = 2) {
+  const total = (values.length - 1) * stepDays;
+  return values.map((w, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (total - i * stepDays));
+    return { date: d.toISOString().slice(0, 10), weightKg: w };
+  });
+}
+
+test('predictGoalDate: 減量ペースから到達日を予測する', () => {
+  // weightSeries は (5点-1)×2日 = 8日間のデータを作る。8日で 80→78kg
+  // なので週ペースは -1.75kg、現在78kgから目標75kgまで3kg・約12日。
+  const r = predictGoalDate(weightSeries([80, 79.5, 79, 78.5, 78]), 75);
+  assert.equal(r.status, 'ok');
+  assert.ok(Math.abs(r.kgPerWeek - -1.75) < 0.01, `週あたり: ${r.kgPerWeek}`);
+  assert.ok(r.daysLeft > 5 && r.daysLeft < 20, `実際: ${r.daysLeft}日`);
+  assert.ok(r.date instanceof Date);
+});
+
+test('predictGoalDate: 記録が少なければ推測しない', () => {
+  assert.equal(predictGoalDate([], 70).status, 'need-more-data');
+  assert.equal(predictGoalDate(weightSeries([80, 79]), 70).status, 'need-more-data');
+});
+
+test('predictGoalDate: 期間が短ければ推測しない', () => {
+  // 4点あるが3日ぶんしかない
+  const r = predictGoalDate(weightSeries([80, 79.8, 79.6, 79.4], 1), 75);
+  assert.equal(r.status, 'need-more-days');
+});
+
+test('predictGoalDate: 目標から遠ざかっていれば正直に伝える', () => {
+  const r = predictGoalDate(weightSeries([78, 78.5, 79, 79.5, 80]), 75);
+  assert.equal(r.status, 'not-approaching');
+  assert.ok(r.kgPerWeek > 0);
+});
+
+test('predictGoalDate: 達成済みなら達成と判定する', () => {
+  const r = predictGoalDate(weightSeries([76, 75.5, 75.2, 75.1, 75.0]), 75);
+  assert.equal(r.status, 'reached');
+});
+
+test('predictGoalDate: 何年も先になる場合は数字を出さない', () => {
+  // ほぼ横ばい（16日で 0.1kg 減）で目標まで 10kg
+  const r = predictGoalDate(weightSeries([80, 79.98, 79.96, 79.94, 79.9]), 70);
+  assert.equal(r.status, 'too-far');
+});
+
+test('predictGoalDate: 目標未設定なら何も出さない', () => {
+  assert.equal(predictGoalDate(weightSeries([80, 79, 78, 77, 76]), undefined).status,
+    'no-target');
+});
+
+/* ============ CSV エクスポート ============ */
+
+test('sessionsToCsv: ヘッダと1行が対応する', () => {
+  const csv = sessionsToCsv([{
+    startedAt: '2026-08-07T10:00:00.000Z',
+    routeName: '皇居一周',
+    distanceM: 5000, elapsedSec: 1200, kcal: 250, calorieIsEstimate: false,
+    avgPowerW: 150, maxPowerW: 300, avgHeartRateBpm: 130,
+    avgSpeedKmh: 25.5, maxSpeedKmh: 38.2,
+    zoneSeconds: { z1: 60, z2: 600, z3: 400, z4: 100, z5: 40 },
+  }]);
+  const lines = csv.split('\n');
+  assert.equal(lines.length, 2);
+  const header = lines[0].split(',');
+  const row = lines[1].split(',');
+  assert.equal(header.length, row.length, 'ヘッダと値の列数が一致すること');
+  assert.equal(row[header.indexOf('距離km')], '5.00');
+  assert.equal(row[header.indexOf('消費kcal')], '250');
+  assert.equal(row[header.indexOf('カロリー算出')], 'パワー実測');
+  assert.equal(row[header.indexOf('Z2秒')], '600');
+});
+
+test('sessionsToCsv: カンマや引用符を含むルート名を壊さない', () => {
+  const csv = sessionsToCsv([{
+    startedAt: '2026-08-07T10:00:00.000Z',
+    routeName: '皇居, "内堀通り"',
+    distanceM: 1000, elapsedSec: 60, kcal: 10,
+  }]);
+  const row = csv.split('\n')[1];
+  assert.ok(row.includes('"皇居, ""内堀通り"""'), `実際: ${row}`);
+  // 引用符で囲まれているので、素朴に分割しても列数が崩れないことまでは
+  // 保証しないが、値の中身が失われていないことを確認する
+  assert.ok(row.includes('内堀通り'));
+});
+
+test('sessionsToCsv: 欠けている項目があっても出力できる', () => {
+  const csv = sessionsToCsv([{ startedAt: '2026-08-07T10:00:00.000Z' }]);
+  const lines = csv.split('\n');
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].split(',').length, lines[1].split(',').length);
+});
+
+test('sessionsToCsv: 記録が無くてもヘッダだけ出す', () => {
+  const csv = sessionsToCsv([]);
+  assert.equal(csv.split('\n').length, 1);
+  assert.ok(csv.startsWith('日時,'));
 });

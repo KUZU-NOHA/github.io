@@ -267,6 +267,18 @@
     </div>
 
     <div class="card">
+      <h3>心拍ゾーン（直近7日）</h3>
+      <p class="muted">
+        <strong>Z2（脂肪燃焼ゾーン）</strong>は、脂肪がエネルギーとして使われる割合が
+        最も高い領域です。ダイエット目的ではここの滞在時間が効きます。
+      </p>
+      <div data-dash="zones"></div>
+      <p class="muted" data-dash="zonesEmpty">
+        心拍計を接続して走行すると、ゾーン別の滞在時間が表示されます。
+      </p>
+    </div>
+
+    <div class="card">
       <h3>体重</h3>
       <div class="row">
         <div class="weight-now">
@@ -285,6 +297,7 @@
         2回以上記録するとグラフが表示されます（青い線は7日移動平均、緑の点線は目標体重）。
       </p>
       <p class="muted" data-dash="weightRange"></p>
+      <p class="goal-prediction" data-dash="goalPrediction"></p>
     </div>
 
     <div class="card">
@@ -299,14 +312,56 @@
         サーバーには一切送信されません。
       </p>
       <div class="row">
+        <button type="button" id="export-csv">CSV でエクスポート</button>
         <button type="button" id="export-data">JSON でエクスポート</button>
         <button type="button" id="clear-data" class="danger">すべて削除</button>
       </div>
+      <p class="muted">
+        CSV は Excel や Google スプレッドシートでそのまま開けます。
+        JSON は体重記録も含めた完全なバックアップです。
+      </p>
     </div>
   </div>
 </section>
 
 </main>
+
+<!-- ============ 走行完了サマリー ============ -->
+<div class="modal" id="ride-summary" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="summary-title">
+    <h2 id="summary-title">お疲れさまでした</h2>
+    <p class="muted" data-summary="route"></p>
+
+    <div class="summary-main">
+      <div class="summary-metric">
+        <span class="value" data-summary="distance">0.00</span><span class="unit">km</span>
+      </div>
+      <div class="summary-metric">
+        <span class="value" data-summary="time">00:00</span>
+      </div>
+      <div class="summary-metric">
+        <span class="value" data-summary="kcal">0</span><span class="unit">kcal</span>
+      </div>
+    </div>
+    <p class="muted" data-summary="kcalNote"></p>
+
+    <dl class="summary-grid">
+      <div><dt>平均パワー</dt><dd data-summary="avgPower">--</dd></div>
+      <div><dt>平均速度</dt><dd data-summary="avgSpeed">--</dd></div>
+      <div><dt>平均心拍</dt><dd data-summary="avgHr">--</dd></div>
+    </dl>
+
+    <h3>心拍ゾーン</h3>
+    <div data-summary="zones"></div>
+    <p class="muted" data-summary="zonesEmpty">心拍データがありません</p>
+
+    <div class="summary-encouragement" data-summary="encouragement"></div>
+
+    <div class="row">
+      <button type="button" class="primary" data-summary-close>閉じる</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 

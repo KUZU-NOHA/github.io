@@ -296,6 +296,112 @@ button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
   padding: .05rem .35rem; border-radius: 4px;
 }
 
+/* ---------- 心拍ゾーン ---------- */
+
+.zone-bar {
+  display: flex; height: 14px; border-radius: 999px; overflow: hidden;
+  background: var(--border); margin: .6rem 0;
+}
+.zone-seg { display: block; height: 100%; }
+
+.zone-legend {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; font-size: .85rem;
+}
+.zone-legend li { display: flex; align-items: center; gap: .35rem; }
+.zone-legend li.is-highlight { font-weight: 700; }
+.zone-legend strong { font-variant-numeric: tabular-nums; margin-left: .15rem; }
+.zone-legend .dot {
+  width: .6rem; height: .6rem; border-radius: 50%; display: inline-block;
+}
+.zone-note {
+  font-size: .875rem; margin: .6rem 0 0;
+  padding: .5rem .75rem; border-radius: 8px;
+  background: rgba(74, 222, 128, .12); border-left: 3px solid #4ade80;
+}
+
+/* ---------- 目標予測 ---------- */
+
+.goal-prediction {
+  font-size: .875rem; margin: .8rem 0 0;
+  padding: .55rem .8rem; border-radius: 8px;
+  background: var(--bg); border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.goal-prediction.is-ok { border-left-color: var(--ok); color: var(--text); }
+.goal-prediction.is-warn { border-left-color: var(--warn); }
+
+/* ---------- セッション詳細 ---------- */
+
+.session-list summary {
+  cursor: pointer; list-style: none;
+}
+.session-list summary::-webkit-details-marker { display: none; }
+.session-list summary::after {
+  content: '＋'; float: right; color: var(--muted); font-size: .85rem;
+}
+.session-list details[open] summary::after { content: '−'; }
+
+.session-detail {
+  margin-top: .7rem; padding-top: .7rem; border-top: 1px solid var(--border);
+}
+.session-detail dl {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: .4rem .9rem; margin: 0 0 .5rem;
+}
+.session-detail dt { font-size: .75rem; color: var(--muted); }
+.session-detail dd {
+  margin: 0; font-size: .9rem; font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 走行完了サマリー ---------- */
+
+.modal {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(6, 12, 24, .62);
+  display: grid; place-items: center; padding: 1.25rem;
+  overflow-y: auto;
+}
+.modal[hidden] { display: none; }
+
+.modal-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 1.5rem;
+  max-width: 30rem; width: 100%;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .3);
+}
+.modal-panel h2 { margin: 0 0 .2rem; font-size: 1.4rem; }
+.modal-panel h3 { margin: 1.2rem 0 .3rem; font-size: .95rem; }
+
+.summary-main {
+  display: flex; gap: 1.5rem; flex-wrap: wrap;
+  align-items: baseline; margin: 1rem 0 .3rem;
+}
+.summary-metric { display: flex; align-items: baseline; gap: .2rem; }
+.summary-metric .value {
+  font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.summary-metric .unit { font-size: .8rem; color: var(--muted); }
+
+.summary-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: .5rem .9rem; margin: 1rem 0 0;
+}
+.summary-grid dt { font-size: .75rem; color: var(--muted); }
+.summary-grid dd {
+  margin: 0; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+
+.summary-encouragement {
+  margin: 1.1rem 0 1.2rem; padding: .8rem 1rem;
+  background: var(--bg); border-radius: 10px;
+  font-size: .9rem;
+}
+.summary-encouragement p { margin: 0 0 .3rem; }
+.summary-encouragement p:last-child { margin-bottom: 0; }
+.summary-encouragement:empty { display: none; }
+
 /* ---------- トースト ---------- */
 
 .toast {
