@@ -188,6 +188,9 @@ function renderSettingsForm() {
       // 算出条件を変えたら平滑化の履歴も捨てる
       app.source._speedSmoother?.reset();
       document.getElementById('source-status').textContent = app.source.description;
+      // Wahoo 制御は転がり抵抗・空気抵抗を別コマンドで保持しているため、
+      // 車種プロファイルを変えたらトレーナー側にも再送して反映する
+      app.source._sendWahooSimMode?.().catch(() => {});
     }
     app.view?.setCamera({
       rangeM: app.settings.cameraRangeM,

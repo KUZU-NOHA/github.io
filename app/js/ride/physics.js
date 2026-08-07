@@ -32,6 +32,25 @@ export function profileFor(key) {
 }
 
 /**
+ * トレーナー（FTMS / Wahoo）へ送る空気抵抗係数を車種プロファイルから導く。
+ *
+ * FTMS 仕様の Wind Resistance Coefficient は kg/m 単位で定義されているが、
+ * 実装によって「0.5×Cd×A×ρ」を送るものと「Cd×A」をそのまま送るものが
+ * 混在しており、絶対値の対応関係を仕様書だけから断定できない。
+ * 誤った絶対値を送ると実機での挙動が不自然になるリスクがあるため、
+ * 多くの FTMS 実装がデフォルトとして使う 0.51 を基準点に固定し、
+ * 車種間の cda 比率だけを反映する（＝相対的な違いだけを安全に伝える）。
+ *
+ * road を基準(0.51)に、tt はより軽く、city はより重くなる。
+ */
+const TRAINER_BASELINE_CW = 0.51;
+
+export function trainerWindResistance(profileKey) {
+  const p = profileFor(profileKey);
+  return TRAINER_BASELINE_CW * (p.cda / BIKE_PROFILES.road.cda);
+}
+
+/**
  * ある速度で走るのに必要なパワー[W]。
  * 転がり抵抗 + 重力（登坂） + 空気抵抗 の合計。
  *

@@ -7,7 +7,7 @@
  */
 
 import { getApiKey } from '../config.js';
-import { buildPath, decodePolyline, resample, parseGpx } from './geo.js';
+import { buildPath, decodePolyline, resample, parseGpx, smoothElevations } from './geo.js';
 
 const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const ELEVATION_ENDPOINT = 'https://maps.googleapis.com/maps/api/elevation/json';
@@ -177,8 +177,11 @@ export async function fetchElevations(path, samples = 300) {
     if (json.status !== 'OK' || !Array.isArray(json.results)) return [];
 
     const sampledElevations = json.results.map((r) => r.elevation);
+    // Elevation API の実測値には数十cm〜数m単位のノイズが乗るため、
+    // 全点へ伸ばす前に平滑化しておく（勾配連動の精度に直結する）
+    const smoothed = smoothElevations(sampledElevations);
     // 間引いた標高を、経路の全点数に線形補間で戻す
-    return expandToPathPoints(sampledElevations, path.points.length);
+    return expandToPathPoints(smoothed, path.points.length);
   } catch {
     return [];
   }
@@ -216,10 +219,12 @@ export async function routeFromGpxFile(file) {
   const points = parseGpx(text);
   const path = buildPath(points);
 
-  // GPX に標高が含まれていれば Elevation API を呼ばずに済む
+  // GPX に標高が含まれていれば Elevation API を呼ばずに済む。
+  // GPS由来の標高（特にバロメーターではなく衛星測位由来のもの）は
+  // 数m単位でばらつくため、Elevation API と同様に平滑化する
   const hasEle = points.every((p) => Number.isFinite(p.ele));
   const elevations = hasEle
-    ? expandToPathPoints(points.map((p) => p.ele), path.points.length)
+    ? expandToPathPoints(smoothElevations(points.map((p) => p.ele)), path.points.length)
     : [];
 
   return {

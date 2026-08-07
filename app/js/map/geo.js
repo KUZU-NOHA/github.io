@@ -186,6 +186,31 @@ export function gradeAt(path, elevations, distanceM, windowM = 40) {
 }
 
 /**
+ * 標高配列を移動平均で平滑化する。
+ *
+ * Elevation API や GPX の標高データには数十cm〜数m単位のノイズが乗る。
+ * これをそのまま gradeAt() に使うと、実際には平坦な区間でも
+ * データのブレだけで勾配が細かく暴れ、トレーナーの負荷がガタつく。
+ * windowPoints 個の移動平均でならしてから使う。
+ *
+ * @param {number[]} elevations
+ * @param {number} windowPoints ならす点数（奇数推奨）
+ */
+export function smoothElevations(elevations, windowPoints = 5) {
+  if (!elevations || elevations.length < 3) {
+    return elevations ? elevations.slice() : [];
+  }
+  const half = Math.floor(windowPoints / 2);
+  return elevations.map((_, i) => {
+    const lo = Math.max(0, i - half);
+    const hi = Math.min(elevations.length - 1, i + half);
+    let sum = 0;
+    for (let j = lo; j <= hi; j++) sum += elevations[j];
+    return sum / (hi - lo + 1);
+  });
+}
+
+/**
  * 経路を等間隔で sampleCount 点にリサンプルする。
  * Elevation API は 1リクエストあたりの点数に上限があるため、
  * 標高取得前に経路を間引く用途で使う。

@@ -30,7 +30,7 @@ import {
 } from './wahoo.js';
 import {
   RevolutionCounter, Smoother, speedFromWheel, cadenceFromCrank, speedFromPower,
-  isPlausibleSpeed, isPlausibleCadence, profileFor,
+  isPlausibleSpeed, isPlausibleCadence, profileFor, trainerWindResistance,
 } from '../ride/physics.js';
 
 const INDOOR_BIKE_DATA = 0x2ad2;
@@ -432,7 +432,7 @@ export class BikeSensor extends EventTarget {
       await char.startNotifications().catch(() => {});
       // 解除コマンドを先に送らないと以降の指示を受け付けない
       await writeTo(char, buildUnlockCommand());
-      await writeTo(char, buildSimModeCommand(this.totalMassKg));
+      await this._sendWahooSimMode();
       this.wahooControl = char;
       this.usesWahooControl = true;
     } catch (err) {
@@ -654,8 +654,19 @@ export class BikeSensor extends EventTarget {
     this._lastGradeValue = gradePercent;
     try {
       if (this.controlPoint) {
-        await this._write(buildSimulationCommand({ gradePercent }));
+        // Set Indoor Bike Simulation Parameters は勾配だけを単独で
+        // 送れる仕様ではなく、転がり抵抗・空気抵抗を含む7バイト全体を
+        // 毎回送る。選ばれている車種プロファイルをここで反映する
+        const p = profileFor(this.bikeProfile);
+        await this._write(buildSimulationCommand({
+          gradePercent,
+          crr: p.crr,
+          cw: trainerWindResistance(this.bikeProfile),
+        }));
       } else if (this.wahooControl) {
+        // Wahoo は crr/cw を別コマンド(SIM Mode)で保持する方式のため、
+        // ここでは勾配のみを送る。プロファイル変更時は
+        // _sendWahooSimMode() 側で反映する
         await writeTo(this.wahooControl, buildSimGradeCommand(gradePercent));
       }
       return true;
@@ -663,6 +674,19 @@ export class BikeSensor extends EventTarget {
       console.warn('勾配の送信に失敗:', err);
       return false;
     }
+  }
+
+  /**
+   * 現在の車種プロファイルを Wahoo の SIM Mode コマンドとして送り直す。
+   * 接続時のほか、走行中に車種を変更したときにも main.js から呼ばれる。
+   */
+  async _sendWahooSimMode() {
+    if (!this.wahooControl) return;
+    const p = profileFor(this.bikeProfile);
+    await writeTo(
+      this.wahooControl,
+      buildSimModeCommand(this.totalMassKg, p.crr, trainerWindResistance(this.bikeProfile))
+    );
   }
 
   async pause() {

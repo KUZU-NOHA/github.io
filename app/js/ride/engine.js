@@ -13,6 +13,7 @@
 
 import { pointAt, gradeAt, elevationAt, lerpAngle } from '../map/geo.js';
 import { CalorieAccumulator, zoneFor, HEART_RATE_ZONES } from './calories.js';
+import { Smoother } from './physics.js';
 
 export const RideState = {
   IDLE: 'idle',
@@ -63,6 +64,13 @@ export class RideEngine extends EventTarget {
     this.grade = 0;
     this.position = pointAt(path, 0);
     this.smoothHeading = this.position.heading;
+
+    // gradeAt() は 40m 窓で局所的に平均化しているが、標高データの
+    // ノイズと走行位置のわずかな変化で、それでも値が細かく揺れうる。
+    // トレーナーへの負荷とHUD表示の両方に使う値なので、ここで一度
+    // ならしておく。壁時計ではなくシミュレーション時間を基準にすることで、
+    // フレームレートのブレやテストでの呼び出し間隔に依存しない挙動にする。
+    this._gradeSmoother = new Smoother(1.5, 6); // 1秒あたり最大6%の変化
 
     // 一定距離ごとに (距離, 経過時間) を記録する。次回同じルートを
     // 走ったときのゴーストとして使う。間隔を空けて保存量を抑える。
@@ -203,8 +211,11 @@ export class RideEngine extends EventTarget {
     );
     this.altitude = elevationAt(this.path, this.elevations, this.distanceM);
 
-    // 勾配とトレーナーへの反映
-    this.grade = gradeAt(this.path, this.elevations, this.distanceM);
+    // 勾配とトレーナーへの反映。生の値をそのまま使うと、標高データの
+    // わずかなノイズでも走行位置が動くたびに細かく揺れるため、
+    // シミュレーション時間を基準に平滑化してから使う
+    const rawGrade = gradeAt(this.path, this.elevations, this.distanceM);
+    this.grade = this._gradeSmoother.update(rawGrade, this.elapsedSec * 1000);
     if (this.gradeEnabled && this.source.supportsGrade) {
       this.source.setGrade(this.grade);
     }

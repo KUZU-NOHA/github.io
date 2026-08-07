@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 
 import {
   haversine, bearing, decodePolyline, buildPath, pointAt,
-  elevationAt, gradeAt, resample, lerpAngle, normalizeAngle,
+  elevationAt, gradeAt, resample, lerpAngle, normalizeAngle, smoothElevations,
 } from '../app/js/map/geo.js';
 import {
   parseIndoorBikeData, buildSimulationCommand, parseFeatureFlags,
@@ -31,7 +31,7 @@ import { parseCyclingPowerMeasurement } from '../app/js/ble/cyclingPower.js';
 import {
   speedFromPower, powerRequired, RevolutionCounter, Smoother,
   speedFromWheel, cadenceFromCrank, isPlausibleSpeed, isPlausibleCadence,
-  BIKE_PROFILES, profileFor,
+  BIKE_PROFILES, profileFor, trainerWindResistance,
 } from '../app/js/ride/physics.js';
 import { expandToPathPoints } from '../app/js/map/route.js';
 import { RideEngine } from '../app/js/ride/engine.js';
@@ -133,6 +133,54 @@ test('gradeAt: 非現実的な急勾配は ±25% に丸める', () => {
   const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.0002, lng: 139 }]);
   const g = gradeAt(path, [0, 1000], 10);
   assert.ok(g <= 25 && g >= -25, `実際: ${g}`);
+});
+
+test('smoothElevations: 単発のノイズを均す', () => {
+  // 平坦な地形の途中に1点だけ大きな外れ値が混ざったケース
+  const raw = [100, 100, 100, 130, 100, 100, 100];
+  const smoothed = smoothElevations(raw, 5);
+  assert.ok(smoothed[3] < 115, `外れ値が均されていない: ${smoothed[3]}`);
+  // 端に近い点も配列外参照せず計算できること
+  assert.ok(Number.isFinite(smoothed[0]));
+  assert.ok(Number.isFinite(smoothed[6]));
+});
+
+test('smoothElevations: 一定勾配の地形は形を保つ（過剰に均さない）', () => {
+  // 0m〜60mへ均等に上る地形。移動平均でも傾き自体は保たれるべき
+  const raw = [0, 10, 20, 30, 40, 50, 60];
+  const smoothed = smoothElevations(raw, 3);
+  for (let i = 1; i < smoothed.length; i++) {
+    assert.ok(smoothed[i] > smoothed[i - 1], `単調増加が崩れた: ${smoothed}`);
+  }
+  // 中央付近の値は元の値に近いはず（一定勾配なので移動平均でもほぼ不変）
+  assert.ok(Math.abs(smoothed[3] - 30) < 1, `実際: ${smoothed[3]}`);
+});
+
+test('smoothElevations: 点数が少なければそのまま返す', () => {
+  assert.deepEqual(smoothElevations([1, 2]), [1, 2]);
+  assert.deepEqual(smoothElevations([]), []);
+  assert.deepEqual(smoothElevations(null), []);
+});
+
+test('smoothElevations: 元の配列を破壊しない', () => {
+  const raw = [10, 50, 10, 50, 10];
+  const copy = raw.slice();
+  smoothElevations(raw);
+  assert.deepEqual(raw, copy);
+});
+
+test('gradeAt: 平滑化した標高を使うとノイズ由来の急勾配が緩和される', () => {
+  // 6mごとの点に1点だけ+5mのノイズが混ざったほぼ平坦な地形（1.2km）
+  const path = buildPath(
+    Array.from({ length: 11 }, (_, i) => ({ lat: 35 + i * 0.001, lng: 139 }))
+  );
+  const noisy = [0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0]; // 中央に外れ値
+  const smoothed = smoothElevations(noisy, 3);
+
+  const midDistance = path.totalDistanceM / 2;
+  const gradeNoisy = Math.abs(gradeAt(path, noisy, midDistance));
+  const gradeSmoothed = Math.abs(gradeAt(path, smoothed, midDistance));
+  assert.ok(gradeSmoothed < gradeNoisy, `平滑化前 ${gradeNoisy} / 平滑化後 ${gradeSmoothed}`);
 });
 
 test('resample: 指定点数で等間隔にリサンプルする', () => {
@@ -465,6 +513,26 @@ test('profileFor: 未知のキーはロードバイクにフォールバック�
   assert.equal(profileFor(undefined), BIKE_PROFILES.road);
 });
 
+test('trainerWindResistance: ロードバイクは基準値(0.51)そのまま', () => {
+  assert.ok(Math.abs(trainerWindResistance('road') - 0.51) < 1e-9);
+});
+
+test('trainerWindResistance: 速い車種ほど値が小さく、遅い車種ほど大きい', () => {
+  const tt = trainerWindResistance('tt');
+  const road = trainerWindResistance('road');
+  const cross = trainerWindResistance('cross');
+  const city = trainerWindResistance('city');
+  assert.ok(tt < road && road < cross && cross < city,
+    `TT ${tt} < ロード ${road} < クロス ${cross} < シティ ${city}`);
+});
+
+test('trainerWindResistance: FTMS/Wahoo の uint8 表現(×0.01, 最大255)に収まる', () => {
+  for (const key of Object.keys(BIKE_PROFILES)) {
+    const cw = trainerWindResistance(key);
+    assert.ok(cw > 0 && cw / 0.01 <= 255, `${key}: ${cw}`);
+  }
+});
+
 test('speedFromPower: パワー0や不正値では 0', () => {
   assert.equal(speedFromPower(0, 0, 80), 0);
   assert.equal(speedFromPower(-50, 0, 80), 0);
@@ -749,6 +817,38 @@ test('RideEngine: 最大速度も倍率を掛けた値で記録する', () => {
   engine.live.speedKmh = 20;
   engine.advance(1);
   assert.equal(engine.summary().maxSpeedKmh, 40);
+});
+
+test('RideEngine: 勾配は初回は生の値をそのまま使う', () => {
+  // Smoother は初回呼び出しではならさずそのまま返す。突然の急坂の
+  // 検知が1フレーム分遅れるだけで済むようにするための仕様
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.01, lng: 139 }]);
+  const engine = new RideEngine({
+    path, source: makeStubSource(), elevations: [0, 100],
+  });
+  engine.live.speedKmh = 36;
+  engine.advance(1);
+  const raw = gradeAt(path, [0, 100], engine.distanceM);
+  assert.ok(Math.abs(engine.grade - raw) < 0.01, `平滑化前 ${raw} / 実際 ${engine.grade}`);
+});
+
+test('RideEngine: 勾配の急変を1秒あたりの上限で抑える', () => {
+  // 平坦(0%)から突然25%勾配の区間に切り替わるような不自然な標高データでも、
+  // 1フレーム目で満額反映せず、変化率の上限に沿ってならされること
+  const path = buildPath([
+    { lat: 35, lng: 139 }, { lat: 35.001, lng: 139 }, { lat: 35.002, lng: 139 },
+  ]);
+  const engine = new RideEngine({
+    path, source: makeStubSource(), elevations: [0, 0, 60],
+  });
+  engine.live.speedKmh = 36;
+  engine.advance(2); // 1回目: ここで基準値が決まる
+  const first = engine.grade;
+  engine.advance(0.1); // 2回目: 0.1秒後の微小な変化
+  const second = engine.grade;
+  // 変化率上限(6%/秒)を大きく超える飛びにはならないこと
+  assert.ok(Math.abs(second - first) <= 6 * 0.1 + 0.5,
+    `1回目 ${first} → 2回目 ${second}`);
 });
 
 test('RideEngine: 勾配をデータ源へ送る', () => {
