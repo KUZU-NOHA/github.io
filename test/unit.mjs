@@ -23,6 +23,9 @@ import {
   kcalFromPower, kcalFromMet, estimateMet, zoneFor, maxHeartRate,
   CalorieAccumulator,
 } from '../app/js/ride/calories.js';
+import {
+  buildUnlockCommand, buildSimGradeCommand, buildSimModeCommand, buildErgCommand,
+} from '../app/js/ble/wahoo.js';
 import { parseCscMeasurement } from '../app/js/ble/csc.js';
 import { parseCyclingPowerMeasurement } from '../app/js/ble/cyclingPower.js';
 import {
@@ -347,6 +350,52 @@ test('Cycling Power: 前方に可変長フィールドがあってもクラン�
   assert.equal(d.powerW, 250);
   assert.equal(d.pedalPowerBalance, 50);
   assert.equal(d.cumulativeCrankRevs, 64);
+});
+
+/* ============ Wahoo 独自トレーナー制御 ============ */
+
+test('Wahoo: 解除コマンド', () => {
+  assert.deepEqual([...buildUnlockCommand()], [0x20, 0xee, 0xfc]);
+});
+
+test('Wahoo: 勾配0%は中央値になる', () => {
+  // 仕様: (grade + 1.0) × 65535 ÷ 2。勾配0 なら 32767.5 → 32768
+  const cmd = buildSimGradeCommand(0);
+  assert.equal(cmd[0], 0x46);
+  const value = cmd[1] | (cmd[2] << 8);
+  assert.equal(value, 32768);
+});
+
+test('Wahoo: 上り勾配は中央値より大きく、下りは小さくなる', () => {
+  const climb = buildSimGradeCommand(5);
+  const descent = buildSimGradeCommand(-5);
+  const v = (c) => c[1] | (c[2] << 8);
+  assert.ok(v(climb) > 32768, `上り: ${v(climb)}`);
+  assert.ok(v(descent) < 32768, `下り: ${v(descent)}`);
+  // 5% は 0.05 → (1.05 × 65535) / 2 = 34406
+  assert.equal(v(climb), 34406);
+});
+
+test('Wahoo: 安全のため勾配を ±25% に丸める', () => {
+  const v = (c) => c[1] | (c[2] << 8);
+  // 想定外の値が来ても負荷が跳ね上がらないこと
+  assert.equal(v(buildSimGradeCommand(999)), v(buildSimGradeCommand(25)));
+  assert.equal(v(buildSimGradeCommand(-999)), v(buildSimGradeCommand(-25)));
+});
+
+test('Wahoo: SIM モードの前提条件をエンコードする', () => {
+  const cmd = buildSimModeCommand(80, 0.004, 0.51);
+  assert.equal(cmd[0], 0x43);
+  assert.equal(cmd.length, 7);
+  assert.equal(cmd[1] | (cmd[2] << 8), 8000);  // 体重 80kg × 100
+  assert.equal(cmd[3] | (cmd[4] << 8), 4);     // crr 0.004 × 1000
+  assert.equal(cmd[5] | (cmd[6] << 8), 510);   // cwr 0.51 × 1000
+});
+
+test('Wahoo: ERG モードの目標パワー', () => {
+  const cmd = buildErgCommand(250);
+  assert.equal(cmd[0], 0x42);
+  assert.equal(cmd[1] | (cmd[2] << 8), 250);
 });
 
 /* ============ 走行物理 ============ */

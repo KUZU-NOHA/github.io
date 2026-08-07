@@ -25,6 +25,10 @@ import {
 } from './cyclingPower.js';
 import { HEART_RATE_SERVICE } from './heartRate.js';
 import {
+  WAHOO_CONTROL_CHARACTERISTIC, buildUnlockCommand,
+  buildSimModeCommand, buildSimGradeCommand,
+} from './wahoo.js';
+import {
   RevolutionCounter, speedFromWheel, cadenceFromCrank, speedFromPower,
 } from '../ride/physics.js';
 
@@ -149,6 +153,18 @@ export async function diagnoseDevice(acceptAll = true) {
   return { name: device.name || '(名前なし)', id: device.id, services: found };
 }
 
+/**
+ * 特性に書き込む。応答ありの書き込みに対応していない特性もあるため、
+ * 使える方を選ぶ。
+ */
+async function writeTo(characteristic, buffer) {
+  if (characteristic.writeValueWithResponse) {
+    await characteristic.writeValueWithResponse(buffer);
+  } else {
+    await characteristic.writeValue(buffer);
+  }
+}
+
 export class BikeSensor extends EventTarget {
   /**
    * @param {object} opts
@@ -172,6 +188,10 @@ export class BikeSensor extends EventTarget {
     /** 取得できている項目 */
     this.provides = { speed: false, cadence: false, power: false, heartRate: false };
 
+    /** FTMS の Control Point が無い機種で使う Wahoo 独自の制御特性 */
+    this.wahooControl = null;
+    this.usesWahooControl = false;
+
     this.currentGrade = 0;
     this._lastGradeSentAt = 0;
     this._lastGradeValue = null;
@@ -182,6 +202,9 @@ export class BikeSensor extends EventTarget {
     this._cpsWheel = new RevolutionCounter({ timeResolution: 2048 });
     this._cpsCrank = new RevolutionCounter({ timeResolution: 1024 });
 
+    // サービスごとの生の観測値。同じ項目が複数から来るため分けて持ち、
+    // 配信時に優先順位で解決する
+    this._raw = { ftms: {}, cyclingPower: {}, csc: {} };
     this._latest = { speedKmh: 0, cadenceRpm: 0, powerW: 0, heartRateBpm: 0 };
   }
 
@@ -190,7 +213,7 @@ export class BikeSensor extends EventTarget {
   }
 
   get supportsGrade() {
-    return !!this.controlPoint;
+    return !!this.controlPoint || !!this.wahooControl;
   }
 
   static get isSupported() {
@@ -219,8 +242,13 @@ export class BikeSensor extends EventTarget {
     else if (this.provides.power) got.push('速度(パワーから算出)');
     if (this.provides.heartRate) got.push('心拍');
 
-    return `${via.join(' + ')} で接続 / 取得: ${got.join('・') || '（ペダルを回してください）'}` +
-      (this.supportsGrade ? ' / 勾配連動に対応' : ' / 勾配連動は非対応');
+    const grade = this.controlPoint
+      ? ' / 勾配連動に対応（FTMS）'
+      : this.wahooControl
+        ? ' / 勾配連動に対応（Wahoo 独自プロトコル・実験的）'
+        : ' / 勾配連動は非対応';
+
+    return `${via.join(' + ')} で接続 / 取得: ${got.join('・') || '（ペダルを回してください）'}${grade}`;
   }
 
   /**
@@ -258,12 +286,13 @@ export class BikeSensor extends EventTarget {
     this.server = await this.device.gatt.connect();
     this.name = this.device.name || 'バイク';
 
-    // 優先順位順に探索する。FTMS が最も情報量が多く、勾配制御もできる
+    // 使えるサービスは全て有効化して統合する。
+    // 「Cycling Power からパワー、CSC から速度・ケイデンス」のように
+    // 複数サービスに分かれている機種があるため、どれか1つに絞ってはいけない。
+    // 同じ項目が複数から来た場合は _resolve() が優先順位で選ぶ。
     await this._trySetupFtms();
-    if (!this.sources.ftms) await this._trySetupCyclingPower();
-    if (!this.sources.ftms && !this.sources.cyclingPower) await this._trySetupCsc();
-    // FTMS でもケイデンスが来ない機種があるので、CSC があれば併用する
-    if (this.sources.ftms && !this.provides.cadence) await this._trySetupCsc();
+    await this._trySetupCyclingPower();
+    await this._trySetupCsc();
     await this._trySetupHeartRate();
 
     const hasRideData = this.sources.ftms || this.sources.cyclingPower || this.sources.csc;
@@ -338,7 +367,7 @@ export class BikeSensor extends EventTarget {
       out.heartRateBpm = d.heartRateBpm;
       this.provides.heartRate = true;
     }
-    this._emit(out);
+    this._emit('ftms', out);
   }
 
   async _trySetupCyclingPower() {
@@ -356,6 +385,38 @@ export class BikeSensor extends EventTarget {
       await char.startNotifications();
       this.sources.cyclingPower = true;
     } catch { /* 通知を張れなければ諦める */ }
+
+    // FTMS の Control Point が無い機種でも、Cycling Power サービス配下に
+    // Wahoo 独自の制御特性を持っていれば勾配連動ができる
+    if (!this.controlPoint) await this._trySetupWahooControl(service);
+  }
+
+  /**
+   * Wahoo 独自のトレーナー制御を有効化する。
+   *
+   * ⚠️ 非公開プロトコルであり、Wahoo 以外の機種では UUID が同じでも
+   *    解釈が異なる可能性がある。失敗しても走行は継続できるよう、
+   *    全ての書き込みを try で囲んでいる。
+   */
+  async _trySetupWahooControl(service) {
+    let char;
+    try {
+      char = await service.getCharacteristic(WAHOO_CONTROL_CHARACTERISTIC);
+    } catch {
+      return; // この機種は Wahoo 制御を持たない
+    }
+
+    try {
+      await char.startNotifications().catch(() => {});
+      // 解除コマンドを先に送らないと以降の指示を受け付けない
+      await writeTo(char, buildUnlockCommand());
+      await writeTo(char, buildSimModeCommand(this.totalMassKg));
+      this.wahooControl = char;
+      this.usesWahooControl = true;
+    } catch (err) {
+      console.warn('Wahoo 制御の初期化に失敗:', err);
+      this.wahooControl = null;
+    }
   }
 
   _onCyclingPowerData(view) {
@@ -379,7 +440,7 @@ export class BikeSensor extends EventTarget {
       const rpm = cadenceFromCrank(rps);
       if (rpm !== null) { out.cadenceRpm = rpm; this.provides.cadence = true; }
     }
-    this._emit(out);
+    this._emit('cyclingPower', out);
   }
 
   async _trySetupCsc() {
@@ -418,7 +479,7 @@ export class BikeSensor extends EventTarget {
       const rpm = cadenceFromCrank(rps);
       if (rpm !== null) { out.cadenceRpm = rpm; this.provides.cadence = true; }
     }
-    this._emit(out);
+    this._emit('csc', out);
   }
 
   /** バイク本体が心拍も中継している場合に拾う（胸ベルトの別接続は heartRate.js 側） */
@@ -437,7 +498,7 @@ export class BikeSensor extends EventTarget {
         const bpm = flags & 0x01 ? v.getUint16(1, true) : v.getUint8(1);
         if (bpm > 0) {
           this.provides.heartRate = true;
-          this._emit({ heartRateBpm: bpm });
+          this._emit('heartRate', { heartRateBpm: bpm });
         }
       });
       await char.startNotifications();
@@ -446,12 +507,49 @@ export class BikeSensor extends EventTarget {
   }
 
   /**
-   * 観測値をまとめて配信する。
-   * 速度が取れない機種では、パワーと現在の勾配から速度を逆算して補う。
+   * 観測値を配信する。
+   *
+   * 同じ項目が複数のサービスから来るため、情報の確からしい順に採用する。
+   *   FTMS > Cycling Power > CSC
+   * 速度がどこからも取れない機種では、パワーと現在の勾配から逆算して補う。
+   *
+   * @param {string} source 'ftms' | 'cyclingPower' | 'csc' | 'heartRate'
+   * @param {object} partial この通知で得られた値
    */
-  _emit(partial) {
-    Object.assign(this._latest, partial);
+  _emit(source, partial) {
+    if (source === 'heartRate') {
+      this._latest.heartRateBpm = partial.heartRateBpm;
+    } else {
+      Object.assign(this._raw[source], partial);
+    }
+    this._resolve();
+    this.dispatchEvent(new CustomEvent('data', { detail: { ...this._latest } }));
+  }
 
+  /** 優先順位に従って各項目の採用値を決める */
+  _resolve() {
+    const order = ['ftms', 'cyclingPower', 'csc'];
+
+    for (const field of ['powerW', 'cadenceRpm', 'speedKmh']) {
+      for (const src of order) {
+        const v = this._raw[src][field];
+        if (Number.isFinite(v)) {
+          this._latest[field] = v;
+          break;
+        }
+      }
+    }
+
+    // 心拍はバイク本体が中継してくる場合もある
+    for (const src of order) {
+      const v = this._raw[src].heartRateBpm;
+      if (Number.isFinite(v) && v > 0) {
+        this._latest.heartRateBpm = v;
+        break;
+      }
+    }
+
+    // 速度を出さない機種はパワーから逆算する。勾配を織り込むので坂で遅くなる
     if (!this.provides.speed && this.provides.power) {
       this._latest.speedKmh = speedFromPower(
         this._latest.powerW,
@@ -459,17 +557,11 @@ export class BikeSensor extends EventTarget {
         this.totalMassKg
       );
     }
-
-    this.dispatchEvent(new CustomEvent('data', { detail: { ...this._latest } }));
   }
 
   async _write(buffer) {
     if (!this.controlPoint) return;
-    if (this.controlPoint.writeValueWithResponse) {
-      await this.controlPoint.writeValueWithResponse(buffer);
-    } else {
-      await this.controlPoint.writeValue(buffer);
-    }
+    await writeTo(this.controlPoint, buffer);
   }
 
   /**
@@ -491,7 +583,11 @@ export class BikeSensor extends EventTarget {
     this._lastGradeSentAt = now;
     this._lastGradeValue = gradePercent;
     try {
-      await this._write(buildSimulationCommand({ gradePercent }));
+      if (this.controlPoint) {
+        await this._write(buildSimulationCommand({ gradePercent }));
+      } else if (this.wahooControl) {
+        await writeTo(this.wahooControl, buildSimGradeCommand(gradePercent));
+      }
       return true;
     } catch (err) {
       console.warn('勾配の送信に失敗:', err);
