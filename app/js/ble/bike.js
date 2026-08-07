@@ -29,7 +29,8 @@ import {
   buildSimModeCommand, buildSimGradeCommand,
 } from './wahoo.js';
 import {
-  RevolutionCounter, speedFromWheel, cadenceFromCrank, speedFromPower,
+  RevolutionCounter, Smoother, speedFromWheel, cadenceFromCrank, speedFromPower,
+  isPlausibleSpeed, isPlausibleCadence,
 } from '../ride/physics.js';
 
 const INDOOR_BIKE_DATA = 0x2ad2;
@@ -171,10 +172,18 @@ export class BikeSensor extends EventTarget {
    * @param {number} opts.wheelCircumferenceMm ホイール周長[mm]（CSC で速度を出す場合に使用）
    * @param {number} opts.totalMassKg          ライダー+バイク重量[kg]（パワーから速度を逆算する場合に使用）
    */
-  constructor({ wheelCircumferenceMm = 2105, totalMassKg = 80 } = {}) {
+  constructor({
+    wheelCircumferenceMm = 2105,
+    totalMassKg = 80,
+    speedSource = 'auto',
+  } = {}) {
     super();
     this.wheelCircumferenceMm = wheelCircumferenceMm;
     this.totalMassKg = totalMassKg;
+    /** 'auto' | 'power' | 'sensor' */
+    this.speedSource = speedSource;
+    /** 実際に採用した速度の出どころ。UI 表示用 */
+    this.activeSpeedSource = null;
 
     this.device = null;
     this.server = null;
@@ -201,6 +210,15 @@ export class BikeSensor extends EventTarget {
     this._cscCrank = new RevolutionCounter({ timeResolution: 1024 });
     this._cpsWheel = new RevolutionCounter({ timeResolution: 2048 });
     this._cpsCrank = new RevolutionCounter({ timeResolution: 1024 });
+
+    // 瞬間値はそのまま出すと暴れるので平滑化する。
+    // 速度は表示と映像の両方に効くので強めに、ケイデンスは弱めに。
+    // 第2引数は1秒あたりの最大変化量。自転車が物理的に出せない
+    // 加減速を禁じることで、単発のノイズが表示を支配するのを防ぐ。
+    // 強くこいだときの実走の加速が毎秒7km/h程度なので、10 なら
+    // 正常な加速を妨げずノイズだけを抑えられる
+    this._speedSmoother = new Smoother(2.5, 10);   // 10 km/h/秒
+    this._cadenceSmoother = new Smoother(1.2, 90); // 90 rpm/秒
 
     // サービスごとの生の観測値。同じ項目が複数から来るため分けて持ち、
     // 配信時に優先順位で解決する
@@ -238,8 +256,9 @@ export class BikeSensor extends EventTarget {
     const got = [];
     if (this.provides.power) got.push('パワー');
     if (this.provides.cadence) got.push('ケイデンス');
-    if (this.provides.speed) got.push('速度');
-    else if (this.provides.power) got.push('速度(パワーから算出)');
+    if (this.activeSpeedSource === 'power') got.push('速度(パワーから算出)');
+    else if (this.activeSpeedSource) got.push('速度');
+    else if (this.provides.speed) got.push('速度');
     if (this.provides.heartRate) got.push('心拍');
 
     const grade = this.controlPoint
@@ -529,34 +548,78 @@ export class BikeSensor extends EventTarget {
   /** 優先順位に従って各項目の採用値を決める */
   _resolve() {
     const order = ['ftms', 'cyclingPower', 'csc'];
-
-    for (const field of ['powerW', 'cadenceRpm', 'speedKmh']) {
+    const pick = (field) => {
       for (const src of order) {
         const v = this._raw[src][field];
-        if (Number.isFinite(v)) {
-          this._latest[field] = v;
-          break;
-        }
+        if (Number.isFinite(v)) return v;
       }
+      return null;
+    };
+
+    const power = pick('powerW');
+    if (power !== null) this._latest.powerW = power;
+
+    const cadence = pick('cadenceRpm');
+    if (cadence !== null && isPlausibleCadence(cadence)) {
+      this._latest.cadenceRpm = this._cadenceSmoother.update(cadence);
     }
 
-    // 心拍はバイク本体が中継してくる場合もある
-    for (const src of order) {
-      const v = this._raw[src].heartRateBpm;
-      if (Number.isFinite(v) && v > 0) {
-        this._latest.heartRateBpm = v;
-        break;
-      }
+    const hr = pick('heartRateBpm');
+    if (hr !== null && hr > 0) this._latest.heartRateBpm = hr;
+
+    const raw = this._resolveSpeed(pick('speedKmh'));
+    if (raw !== null) {
+      this._latest.speedKmh = Math.max(0, this._speedSmoother.update(raw));
+    }
+  }
+
+  /**
+   * 速度の出どころを決める。
+   *
+   * 【なぜ選べるようにしたか】
+   * 一体型エアロバイクの CSC が返す「ホイール回転数」は、実際の車輪ではなく
+   * 内部のカウントであることが多い。それにホイール周長を掛けても意味のある
+   * 速度にならず、非現実的な値になったり大きく暴れたりする。
+   * パワーから逆算する方式は物理的な裏付けがあり、勾配も織り込めるため、
+   * パワーが取れる機種ではそちらを既定にする。
+   *
+   * @param {number|null} sensorSpeed センサー由来の速度[km/h]
+   * @returns {number|null} 採用する速度。まだ決められない場合は null
+   */
+  _resolveSpeed(sensorSpeed) {
+    const hasPower = Number.isFinite(this._latest.powerW) && this.provides.power;
+    const sensorOk = sensorSpeed !== null && isPlausibleSpeed(sensorSpeed);
+
+    const fromPower = () => {
+      this.activeSpeedSource = 'power';
+      return speedFromPower(this._latest.powerW, this.currentGrade, this.totalMassKg);
+    };
+
+    if (this.speedSource === 'power') {
+      return hasPower ? fromPower() : (sensorOk ? (this.activeSpeedSource = 'sensor', sensorSpeed) : null);
     }
 
-    // 速度を出さない機種はパワーから逆算する。勾配を織り込むので坂で遅くなる
-    if (!this.provides.speed && this.provides.power) {
-      this._latest.speedKmh = speedFromPower(
-        this._latest.powerW,
-        this.currentGrade,
-        this.totalMassKg
-      );
+    if (this.speedSource === 'sensor') {
+      if (sensorOk) {
+        this.activeSpeedSource = 'sensor';
+        return sensorSpeed;
+      }
+      return hasPower ? fromPower() : null;
     }
+
+    // auto: FTMS の速度は機器が算出した正規の値なので最優先。
+    // それ以外はパワーからの逆算を優先し、無ければセンサー値を使う。
+    const ftmsSpeed = this._raw.ftms.speedKmh;
+    if (Number.isFinite(ftmsSpeed) && isPlausibleSpeed(ftmsSpeed)) {
+      this.activeSpeedSource = 'ftms';
+      return ftmsSpeed;
+    }
+    if (hasPower) return fromPower();
+    if (sensorOk) {
+      this.activeSpeedSource = 'sensor';
+      return sensorSpeed;
+    }
+    return null;
   }
 
   async _write(buffer) {

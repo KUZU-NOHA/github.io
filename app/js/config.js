@@ -27,6 +27,10 @@ export const DEFAULT_SETTINGS = {
   // CSC / Cycling Power のホイール回転数から速度を出す機種で使う。
   // 700x25C 相当。一体型エアロバイクでは通常この値は使われない
   wheelCircumferenceMm: 2105,
+  // 速度の求め方。'auto' | 'power' | 'sensor'
+  // 一体型エアロバイクのホイール回転数は内部カウントで実距離と対応しない
+  // ことが多いため、既定ではパワーからの逆算を優先する
+  speedSource: 'auto',
 };
 
 export function getApiKey() {

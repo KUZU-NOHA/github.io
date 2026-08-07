@@ -29,8 +29,8 @@ import {
 import { parseCscMeasurement } from '../app/js/ble/csc.js';
 import { parseCyclingPowerMeasurement } from '../app/js/ble/cyclingPower.js';
 import {
-  speedFromPower, powerRequired, RevolutionCounter,
-  speedFromWheel, cadenceFromCrank,
+  speedFromPower, powerRequired, RevolutionCounter, Smoother,
+  speedFromWheel, cadenceFromCrank, isPlausibleSpeed, isPlausibleCadence,
 } from '../app/js/ride/physics.js';
 import { expandToPathPoints } from '../app/js/map/route.js';
 import { RideEngine } from '../app/js/ride/engine.js';
@@ -454,6 +454,27 @@ test('RevolutionCounter: 回転数/秒を算出する', () => {
   assert.ok(Math.abs(rps - 10) < 0.001, `実際: ${rps}`);
 });
 
+test('RevolutionCounter: 測定窓が短すぎるうちは値を跳ねさせない', () => {
+  // 通知間隔が 10ms で回転1回だと、素朴に割ると毎秒100回転になってしまう。
+  // これが「速度が異常な値になる」原因なので、窓がたまるまで保持する。
+  const c = new RevolutionCounter({ timeResolution: 1024, minIntervalSec: 0.5 });
+  c.update(0, 0);
+  assert.equal(c.update(1, 10), null, '窓が足りない間は前回値（初回は null）');
+  assert.equal(c.update(2, 20), null);
+  // 0.5秒を超えたところで初めて算出する（累積 使用: 512/1024 = 0.5秒で 5回転）
+  const rps = c.update(5, 512);
+  assert.ok(Math.abs(rps - 10) < 0.01, `実際: ${rps}`);
+});
+
+test('RevolutionCounter: 算出後は次の窓がたまるまで直前値を保持する', () => {
+  const c = new RevolutionCounter({ timeResolution: 1024, minIntervalSec: 0.5 });
+  c.update(0, 0);
+  const first = c.update(10, 1024);
+  assert.ok(Math.abs(first - 10) < 0.01);
+  // すぐ次の通知が来ても値が暴れない
+  assert.equal(c.update(11, 1034), first);
+});
+
 test('RevolutionCounter: uint16 の時刻巻き戻りを補正する', () => {
   const c = new RevolutionCounter({ timeResolution: 1024 });
   c.update(0, 65000);
@@ -485,6 +506,83 @@ test('speedFromWheel: 周長 2105mm で毎秒5回転なら約37.9km/h', () => {
 test('cadenceFromCrank: 毎秒1.5回転なら 90rpm', () => {
   assert.equal(cadenceFromCrank(1.5), 90);
   assert.equal(cadenceFromCrank(null), null);
+});
+
+/* ============ 平滑化と外れ値の除去 ============ */
+
+test('Smoother: 初回はそのまま、以降は徐々に追従する', () => {
+  const s = new Smoother(2.0);
+  assert.equal(s.update(30, 0), 30);
+  // 1秒後に 0 が来ても一気に 0 にはならない
+  const after = s.update(0, 1000);
+  assert.ok(after > 0 && after < 30, `実際: ${after}`);
+});
+
+test('Smoother: 時間が経つほど新しい値へ強く追従する', () => {
+  const quick = new Smoother(2.0);
+  quick.update(0, 0);
+  const shortStep = quick.update(100, 200);   // 0.2秒後
+
+  const slow = new Smoother(2.0);
+  slow.update(0, 0);
+  const longStep = slow.update(100, 5000);    // 5秒後
+
+  assert.ok(longStep > shortStep, `0.2秒: ${shortStep} / 5秒: ${longStep}`);
+  assert.ok(longStep > 90, `5秒後はほぼ追いつく: ${longStep}`);
+});
+
+test('Smoother: 平滑化だけでは大きな外れ値に引きずられる（変化率制限が要る根拠）', () => {
+  const s = new Smoother(2.5); // 変化率制限なし
+  for (let t = 0; t < 5; t++) s.update(25, t * 1000);
+  const v = s.update(300, 5200);
+  assert.ok(v > 100, `平滑化のみだと ${v} まで跳ねる`);
+});
+
+test('Smoother: 変化率制限があれば単発スパイクが表示を支配しない', () => {
+  const s = new Smoother(2.5, 10); // 10 km/h/秒（実機の設定と同じ）
+  s.update(25, 0);
+  s.update(25, 1000);
+  // 直前の更新から 0.2秒後にノイズ 300km/h が1回混ざっても、
+  // 増分は 10 × 0.2 = 2km/h までに抑えられる
+  const v = s.update(300, 1200);
+  assert.ok(v <= 27.01, `実際: ${v}`);
+});
+
+test('Smoother: 変化率制限は正常な加減速を妨げない', () => {
+  const s = new Smoother(0.5, 10);
+  s.update(20, 0);
+  // 3秒かけて 20→30km/h（毎秒3.3km/h）は実走で普通に起こる。追随できること
+  let v = 20;
+  for (let t = 1; t <= 6; t++) v = s.update(30, t * 500);
+  assert.ok(v > 29, `実際: ${v}`);
+});
+
+test('Smoother: 減速側にも変化率制限が効く', () => {
+  const s = new Smoother(2.5, 10);
+  s.update(30, 0);
+  s.update(30, 1000);
+  const v = s.update(0, 1200); // 0.2秒で急停止の値が来た
+  assert.ok(v >= 27.99, `実際: ${v}`);
+});
+
+test('Smoother: 不正な値は無視して直前値を保つ', () => {
+  const s = new Smoother(2.0);
+  s.update(25, 0);
+  assert.equal(s.update(NaN, 1000), 25);
+});
+
+test('isPlausibleSpeed: 現実にありえない速度を弾く', () => {
+  assert.equal(isPlausibleSpeed(30), true);
+  assert.equal(isPlausibleSpeed(0), true);
+  assert.equal(isPlausibleSpeed(500), false);   // 内部カウントを誤って換算した値
+  assert.equal(isPlausibleSpeed(-5), false);
+  assert.equal(isPlausibleSpeed(NaN), false);
+});
+
+test('isPlausibleCadence: 現実にありえないケイデンスを弾く', () => {
+  assert.equal(isPlausibleCadence(90), true);
+  assert.equal(isPlausibleCadence(400), false);
+  assert.equal(isPlausibleCadence(-1), false);
 });
 
 /* ============ 心拍 ============ */

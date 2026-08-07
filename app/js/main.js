@@ -157,8 +157,14 @@ function renderSettingsForm() {
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
       const field = form.elements[key];
       if (!field) continue;
-      app.settings[key] =
-        field.type === 'checkbox' ? field.checked : coerceNumber(field.value);
+      if (field.type === 'checkbox') {
+        app.settings[key] = field.checked;
+      } else if (typeof DEFAULT_SETTINGS[key] === 'string') {
+        // select など文字列の設定は数値化しない
+        app.settings[key] = field.value;
+      } else {
+        app.settings[key] = coerceNumber(field.value);
+      }
     }
     saveSettings(app.settings);
     // 走行中でも即座に反映する
@@ -166,6 +172,13 @@ function renderSettingsForm() {
       app.engine.speedMultiplier = app.settings.speedMultiplier;
       app.engine.gradeEnabled = app.settings.gradeEnabled;
       app.engine.age = app.settings.age;
+    }
+    if (app.source && !app.source.isSimulated) {
+      app.source.speedSource = app.settings.speedSource;
+      app.source.wheelCircumferenceMm = app.settings.wheelCircumferenceMm;
+      // 出どころを変えたら平滑化の履歴も捨てる
+      app.source._speedSmoother?.reset();
+      document.getElementById('source-status').textContent = app.source.description;
     }
     app.view?.setCamera({
       rangeM: app.settings.cameraRangeM,
@@ -308,10 +321,18 @@ async function connectBike({ acceptAll }) {
     const bike = new BikeSensor({
       wheelCircumferenceMm: app.settings.wheelCircumferenceMm,
       totalMassKg: app.settings.weightKg + 9,
+      speedSource: app.settings.speedSource,
     });
     await bike.connect({ acceptAll });
     setSource(bike);
     toast(`${bike.name} に接続しました — ${bike.description}`, 'ok');
+
+    // 接続直後は何が取れるか未確定なので、数秒後に説明を更新する
+    setTimeout(() => {
+      if (app.source === bike) {
+        document.getElementById('source-status').textContent = bike.description;
+      }
+    }, 4000);
   } catch (err) {
     // ユーザーがダイアログを閉じただけのケースは通常のフローなので騒がない
     if (err.name === 'NotFoundError' && /cancel|User cancelled/i.test(err.message)) {

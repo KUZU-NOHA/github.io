@@ -63,12 +63,26 @@
         <label>カメラ距離 (m)<input type="number" name="cameraRangeM" min="10" max="300" step="5"></label>
         <label>カメラ俯角 (度)<input type="number" name="cameraTilt" min="0" max="90" step="1"></label>
         <label>ホイール周長 (mm)<input type="number" name="wheelCircumferenceMm" min="1000" max="2400" step="1"></label>
+        <label>速度の求め方
+          <select name="speedSource">
+            <option value="auto">自動（推奨）</option>
+            <option value="power">パワーから算出</option>
+            <option value="sensor">センサーの値をそのまま</option>
+          </select>
+        </label>
         <label class="check"><input type="checkbox" name="gradeEnabled"> 勾配連動を使う</label>
         <label class="check"><input type="checkbox" name="loop"> 終点で最初に戻る</label>
       </form>
       <p class="muted">
         映像速度の倍率を上げると、ゆっくり漕いでも景色が速く進みます。
         短時間でも「遠くまで行った感」が出るので、continuity（継続）に効きます。
+      </p>
+      <p class="muted">
+        <strong>速度が異常な値になったり大きく暴れる場合</strong>は「速度の求め方」を
+        <strong>パワーから算出</strong>にしてください。一体型エアロバイクが返す
+        ホイール回転数は内部カウントで実距離と対応しないことが多く、
+        そのまま速度に換算すると値が安定しません。パワーからの算出なら
+        物理計算に基づくので滑らかで、坂道では自然に遅くなります。
       </p>
     </div>
   </div>
