@@ -37,6 +37,7 @@ import { expandToPathPoints } from '../app/js/map/route.js';
 import { RideEngine } from '../app/js/ride/engine.js';
 import {
   currentStreak, kcalWithin, zoneTotals, predictGoalDate, sessionsToCsv,
+  routeKeyFor, bestGhostFor,
 } from '../app/js/store/sessions.js';
 
 /* ============ 地理計算 ============ */
@@ -838,6 +839,113 @@ test('RideEngine: 平均値と要約を算出する', () => {
   assert.equal(typeof s.startedAt, 'string');
 });
 
+test('RideEngine: 一定距離ごとに distanceLog を記録する', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.1, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+  engine.live.speedKmh = 36; // 10 m/s
+  for (let i = 0; i < 10; i++) engine.advance(1); // 合計100m進む
+
+  assert.ok(engine.distanceLog.length >= 3, `記録数: ${engine.distanceLog.length}`);
+  assert.equal(engine.distanceLog[0].distanceM, 0);
+  // 単調増加であること（ゴースト補間の前提）
+  for (let i = 1; i < engine.distanceLog.length; i++) {
+    assert.ok(engine.distanceLog[i].distanceM >= engine.distanceLog[i - 1].distanceM);
+  }
+});
+
+test('RideEngine: ゴーストより速いと ghostDeltaSec が負になる', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.1, lng: 139 }]); // 約11.1km
+  const ghost = {
+    distanceLog: [
+      { distanceM: 0, elapsedSec: 0 },
+      { distanceM: 11100, elapsedSec: 1000 },
+    ],
+  };
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [], ghost });
+  engine.live.speedKmh = 3600; // 極端に速く走り、同距離を短時間で通過させる
+  engine.advance(3); // 3000m 相当
+
+  assert.ok(engine.ghostDeltaSec < 0, `実際: ${engine.ghostDeltaSec}`);
+  assert.equal(engine.snapshot().hasGhost, true);
+});
+
+test('RideEngine: ゴーストより遅いと ghostDeltaSec が正になる', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.1, lng: 139 }]);
+  const ghost = {
+    distanceLog: [
+      { distanceM: 0, elapsedSec: 0 },
+      { distanceM: 11100, elapsedSec: 100 }, // ゴーストは非常に速い
+    ],
+  };
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [], ghost });
+  engine.live.speedKmh = 3.6; // 1 m/s とゆっくり
+  engine.advance(1000); // 1000m 相当（十分ゴーストより遅い）
+
+  assert.ok(engine.ghostDeltaSec > 0, `実際: ${engine.ghostDeltaSec}`);
+});
+
+test('RideEngine: ゴーストが無ければ hasGhost=false, ghostDeltaSec=null', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+  engine.live.speedKmh = 20;
+  engine.advance(5);
+  const s = engine.snapshot();
+  assert.equal(s.hasGhost, false);
+  assert.equal(s.ghostDeltaSec, null);
+});
+
+test('RideEngine: loop ルートではゴーストが渡されても無効化される', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const ghost = { distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 1000, elapsedSec: 100 }] };
+  const engine = new RideEngine({
+    path, source: makeStubSource(), elevations: [], loop: true, ghost,
+  });
+  assert.equal(engine.ghost, null);
+});
+
+test('RideEngine: loop ルートの summary は distanceLog を保存しない', () => {
+  // loop では距離が周回のたびに巻き戻るため、次回のゴーストとして使うと
+  // 誤った比較になる。保存自体をしないことで壊れたゴーストを防ぐ
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.001, lng: 139 }]);
+  const engine = new RideEngine({
+    path, source: makeStubSource(), elevations: [], loop: true,
+  });
+  engine.live.speedKmh = 20;
+  engine.advance(5);
+  assert.deepEqual(engine.summary().distanceLog, []);
+});
+
+test('RideEngine: 非 loop ルートの summary には distanceLog が含まれる', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+  engine.live.speedKmh = 20;
+  engine.advance(5);
+  assert.ok(engine.summary().distanceLog.length > 0);
+});
+
+test('RideEngine: 途中終了しても finish() 時点の位置が distanceLog に確定する', () => {
+  // 25m のログ間隔に届かないうちに finish() された場合でも、次回このルートを
+  // 走ったときにゴーストとして使えるよう最終地点を確定させる必要がある
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+  engine.live.speedKmh = 3.6; // 1 m/s
+  engine.advance(3); // 3m しか進まない（25m 未満）
+
+  assert.equal(engine.distanceLog.length, 1, '前提: この時点ではまだ記録されていない');
+  engine.finish();
+  assert.equal(engine.distanceLog.length, 2);
+  const last = engine.distanceLog[engine.distanceLog.length - 1];
+  assert.ok(Math.abs(last.distanceM - 3) < 0.01, `実際: ${last.distanceM}`);
+  assert.ok(engine.summary().distanceLog.length >= 2);
+});
+
+test('RideEngine: 開始直後(距離0)で finish() しても重複記録しない', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+  engine.finish();
+  assert.equal(engine.distanceLog.length, 1);
+});
+
 test('RideEngine: dt が 0 以下なら何も進めない', () => {
   const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
   const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
@@ -999,4 +1107,55 @@ test('sessionsToCsv: 記録が無くてもヘッダだけ出す', () => {
   const csv = sessionsToCsv([]);
   assert.equal(csv.split('\n').length, 1);
   assert.ok(csv.startsWith('日時,'));
+});
+
+/* ============ ルートの同一性判定とゴースト選択 ============ */
+
+test('routeKeyFor: 同じ経路なら同じキーになる', () => {
+  const path = buildPath([{ lat: 35.68, lng: 139.76 }, { lat: 35.69, lng: 139.77 }]);
+  const same = buildPath([{ lat: 35.68, lng: 139.76 }, { lat: 35.69, lng: 139.77 }]);
+  assert.equal(routeKeyFor(path), routeKeyFor(same));
+});
+
+test('routeKeyFor: 始点・終点が違えば別キーになる', () => {
+  const a = buildPath([{ lat: 35.68, lng: 139.76 }, { lat: 35.69, lng: 139.77 }]);
+  const b = buildPath([{ lat: 35.60, lng: 139.70 }, { lat: 35.61, lng: 139.71 }]);
+  assert.notEqual(routeKeyFor(a), routeKeyFor(b));
+});
+
+test('routeKeyFor: 座標が無ければ null', () => {
+  assert.equal(routeKeyFor(null), null);
+  assert.equal(routeKeyFor({ points: [] }), null);
+});
+
+test('bestGhostFor: 同じルートの最速セッションを選ぶ', () => {
+  const sessions = [
+    { id: 1, routeKey: 'A', elapsedSec: 600, distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 100, elapsedSec: 600 }] },
+    { id: 2, routeKey: 'A', elapsedSec: 500, distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 100, elapsedSec: 500 }] },
+    { id: 3, routeKey: 'B', elapsedSec: 100, distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 100, elapsedSec: 100 }] },
+  ];
+  const ghost = bestGhostFor(sessions, 'A');
+  assert.equal(ghost.id, 2);
+});
+
+test('bestGhostFor: 除外指定した自分自身は選ばない', () => {
+  const sessions = [
+    { id: 1, routeKey: 'A', elapsedSec: 500, distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 100, elapsedSec: 500 }] },
+    { id: 2, routeKey: 'A', elapsedSec: 400, distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 100, elapsedSec: 400 }] },
+  ];
+  const ghost = bestGhostFor(sessions, 'A', 2);
+  assert.equal(ghost.id, 1);
+});
+
+test('bestGhostFor: distanceLog を持たない旧セッションは除外する', () => {
+  const sessions = [{ id: 1, routeKey: 'A', elapsedSec: 100 }];
+  assert.equal(bestGhostFor(sessions, 'A'), null);
+});
+
+test('bestGhostFor: 該当ルートが無ければ null', () => {
+  const sessions = [
+    { id: 1, routeKey: 'B', elapsedSec: 100, distanceLog: [{ distanceM: 0, elapsedSec: 0 }, { distanceM: 10, elapsedSec: 100 }] },
+  ];
+  assert.equal(bestGhostFor(sessions, 'A'), null);
+  assert.equal(bestGhostFor(sessions, null), null);
 });

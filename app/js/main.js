@@ -23,7 +23,10 @@ import { RideEngine, RideState } from './ride/engine.js';
 import { Hud, renderElevationProfile, formatDuration } from './ui/hud.js';
 import { Dashboard } from './ui/dashboard.js';
 import { RideSummary } from './ui/summary.js';
-import { saveSession, listSessions, kcalWithin, currentStreak } from './store/sessions.js';
+import {
+  saveSession, listSessions, kcalWithin, currentStreak,
+  saveRoute, listRoutes, deleteRoute, routeKeyFor, bestGhostFor,
+} from './store/sessions.js';
 
 const app = {
   settings: loadSettings(),
@@ -77,6 +80,7 @@ async function init() {
   bindDashboard();
   renderSettingsForm();
   renderPresets();
+  renderFavorites();
   updateBleAvailability();
 
   // API キーがあれば Maps を先に読み込んでおく（走行開始を速くするため）
@@ -222,6 +226,13 @@ function renderPresets() {
 }
 
 function bindRouteScreen() {
+  document.getElementById('route-favorite').addEventListener('click', openFavoriteSaveForm);
+  document.getElementById('favorite-save-cancel').addEventListener('click', closeFavoriteSaveForm);
+  document.getElementById('favorite-save-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveCurrentRouteAsFavorite(document.getElementById('favorite-name-input').value);
+  });
+
   document.getElementById('route-search').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!hasApiKey()) {
@@ -290,6 +301,10 @@ async function selectRoute(result) {
     name: result.name ?? 'ルート',
     loop: result.loop ?? app.settings.loop,
     warning: result.warning ?? null,
+    // ゴースト走行で「同じルートを過去に走ったか」を判定するためのキー。
+    // お気に入り保存済みルートを選び直した場合はそちらの id を優先する
+    routeKey: routeKeyFor(path),
+    favoriteId: result.favoriteId ?? null,
   };
 
   const km = (path.totalDistanceM / 1000).toFixed(2);
@@ -301,8 +316,103 @@ async function selectRoute(result) {
   `;
   document.getElementById('route-ready').hidden = false;
 
+  document.getElementById('favorite-save-form').hidden = true;
+  const favBtn = document.getElementById('route-favorite');
+  favBtn.hidden = !!app.route.favoriteId; // 既にお気に入りなら再保存ボタンは不要
+  favBtn.disabled = false;
+
   if (app.route.warning) toast(app.route.warning, 'warn');
   else toast(`ルートを設定しました（${km} km）`, 'ok');
+}
+
+function openFavoriteSaveForm() {
+  if (!app.route) return;
+  document.getElementById('favorite-name-input').value = app.route.name;
+  document.getElementById('favorite-save-form').hidden = false;
+  document.getElementById('route-favorite').hidden = true;
+  document.getElementById('favorite-name-input').focus();
+}
+
+function closeFavoriteSaveForm() {
+  document.getElementById('favorite-save-form').hidden = true;
+  // 既にお気に入り済みのルートでなければボタンを再表示する
+  document.getElementById('route-favorite').hidden = !!app.route?.favoriteId;
+}
+
+async function saveCurrentRouteAsFavorite(name) {
+  if (!app.route) return;
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) {
+    toast('ルート名を入力してください', 'warn');
+    return;
+  }
+
+  try {
+    const id = await saveRoute({
+      name: trimmed,
+      path: app.route.path,
+      elevations: app.route.elevations,
+      loop: app.route.loop,
+    });
+    app.route.favoriteId = id;
+    document.getElementById('favorite-save-form').hidden = true;
+    toast('お気に入りに保存しました', 'ok');
+    await renderFavorites();
+  } catch (err) {
+    toast(`保存に失敗しました: ${err.message}`, 'error');
+  }
+}
+
+async function renderFavorites() {
+  const wrap = document.getElementById('favorite-list');
+  const empty = document.getElementById('favorite-empty');
+  const favorites = await listRoutes();
+
+  if (favorites.length === 0) {
+    wrap.innerHTML = '';
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  wrap.innerHTML = favorites
+    .map((r) => {
+      const km = (r.path.totalDistanceM / 1000).toFixed(2);
+      return `
+        <li>
+          <button type="button" class="preset" data-favorite="${r.id}">
+            <strong>${escapeHtml(r.name)}</strong>
+            <span class="muted">${km} km${r.loop ? '・周回' : ''}</span>
+          </button>
+          <button type="button" class="icon-btn" data-favorite-delete="${r.id}" aria-label="削除">×</button>
+        </li>`;
+    })
+    .join('');
+
+  wrap.querySelectorAll('[data-favorite]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const r = favorites.find((x) => x.id === Number(btn.dataset.favorite));
+      if (!r) return;
+      await selectRoute({
+        path: r.path,
+        elevations: r.elevations,
+        name: r.name,
+        loop: r.loop,
+        favoriteId: r.id,
+      });
+    });
+  });
+
+  wrap.querySelectorAll('[data-favorite-delete]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = Number(btn.dataset.favoriteDelete);
+      if (confirm('このお気に入りルートを削除しますか？')) {
+        await deleteRoute(id);
+        await renderFavorites();
+      }
+    });
+  });
 }
 
 function totalClimb(elevations) {
@@ -532,6 +642,12 @@ async function startRide() {
   // 標高プロファイルが再描画されなくなる
   lastProfileAt = 0;
   app.checkpoints.reset();
+
+  // 同じルートを過去に走っていれば、その中で最速のものをゴーストにする
+  const ghost = app.route.loop
+    ? null
+    : bestGhostFor(await listSessions(), app.route.routeKey);
+
   app.engine = new RideEngine({
     path: app.route.path,
     elevations: app.route.elevations,
@@ -541,6 +657,7 @@ async function startRide() {
     speedMultiplier: app.settings.speedMultiplier,
     gradeEnabled: app.settings.gradeEnabled,
     loop: app.route.loop,
+    ghost,
   });
 
   app.engine.addEventListener('tick', (e) => onTick(e.detail));
@@ -549,7 +666,12 @@ async function startRide() {
 
   app.engine.start();
   document.getElementById('ride-stage').classList.add('is-riding');
-  toast('走行を開始しました。ペダルを回してください。', 'ok');
+  toast(
+    ghost
+      ? `走行を開始しました。前回のタイム（${formatDuration(ghost.elapsedSec)}）と比較します。`
+      : '走行を開始しました。ペダルを回してください。',
+    'ok'
+  );
 }
 
 /** 3D を試み、失敗したら 2D にフォールバックする（要件定義書 R-06） */
@@ -634,10 +756,15 @@ function togglePause() {
 
 async function onFinish(summary) {
   document.getElementById('ride-stage').classList.remove('is-riding');
-  const session = { ...summary, routeName: app.route.name };
+  const session = {
+    ...summary,
+    routeName: app.route.name,
+    routeKey: app.route.routeKey,
+  };
 
+  let savedId = null;
   try {
-    await saveSession(session);
+    savedId = await saveSession(session);
   } catch (err) {
     toast(`記録の保存に失敗しました: ${err.message}`, 'error');
   }
@@ -648,10 +775,14 @@ async function onFinish(summary) {
   // トーストで流さずきちんと出す
   try {
     const sessions = await listSessions();
+    const ghost = !app.route.loop
+      ? bestGhostFor(sessions, session.routeKey, savedId)
+      : null;
     app.summary.show(session, {
       weekKcal: kcalWithin(sessions, 7),
       weekGoal: app.settings.weeklyKcalGoal,
       streak: currentStreak(sessions),
+      ghost,
     });
   } catch {
     // サマリーが出せなくても記録は残っているので致命的ではない

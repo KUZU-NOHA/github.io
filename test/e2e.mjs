@@ -227,6 +227,65 @@ try {
   check('CSV エクスポートが動く', csv.suggestedFilename().endsWith('.csv'),
     csv.suggestedFilename());
 
+  /* ---- お気に入りルートとゴースト走行（loop なしルートで検証） ---- */
+  await page.click('[data-nav="route"]');
+  await page.click('[data-preset="golden-gate"]');
+  await page.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
+
+  await page.click('#route-favorite');
+  check('保存ボタンを押すと名前入力フォームが開く',
+    await page.locator('#favorite-save-form').isVisible());
+  const prefilled = await page.locator('#favorite-name-input').inputValue();
+  check('ルート名がデフォルト入力される', prefilled.length > 0, prefilled);
+  await page.click('#favorite-save-form button[type="submit"]');
+  await page.waitForTimeout(300);
+  check('保存後はお気に入りボタンが隠れる',
+    await page.locator('#route-favorite').isHidden());
+
+  await page.click('[data-nav="route"]');
+  const favCount = await page.locator('#favorite-list [data-favorite]').count();
+  check('お気に入りルートが一覧に表示される', favCount >= 1, `${favCount} 件`);
+
+  // 1回目: お気に入りから選んで走行。まだ比較対象が無い
+  await page.click('#favorite-list [data-favorite]');
+  await page.waitForSelector('#route-ready:not([hidden])');
+  await page.click('#route-ready [data-nav="ride"]');
+  await page.click('#ride-start');
+  await page.waitForTimeout(2500);
+  await page.click('#ride-finish');
+  await page.waitForTimeout(800);
+  check('初回はゴースト比較が出ない',
+    await page.locator('[data-summary="ghost"]').isHidden());
+  await page.click('#ride-summary [data-summary-close]');
+  await page.waitForTimeout(200);
+
+  // 2回目: 同じルートを再度走ると、1回目がゴーストとして現れる
+  await page.click('[data-nav="route"]');
+  await page.click('#favorite-list [data-favorite]');
+  await page.waitForSelector('#route-ready:not([hidden])');
+  await page.click('#route-ready [data-nav="ride"]');
+  await page.click('#ride-start');
+  await page.waitForTimeout(500);
+  check('2回目は走行中に前回比のHUDが出る',
+    !(await page.locator('[data-hud="ghostRow"]').isHidden()));
+  await page.waitForTimeout(2000);
+  await page.click('#ride-finish');
+  await page.waitForTimeout(800);
+  check('2回目のサマリーにゴースト比較が出る',
+    await page.locator('[data-summary="ghost"]').isVisible());
+  const ghostText = await page.locator('[data-summary="ghost"]').innerText();
+  check('ゴースト比較に文言が入る', ghostText.length > 5, ghostText);
+  await page.click('#ride-summary [data-summary-close]');
+  await page.waitForTimeout(200);
+
+  // お気に入りの削除
+  await page.click('[data-nav="route"]');
+  await page.click('#favorite-list [data-favorite-delete]'); // confirm は accept される
+  await page.waitForTimeout(300);
+  const favCountAfter = await page.locator('#favorite-list [data-favorite]').count();
+  check('お気に入りルートを削除できる', favCountAfter === favCount - 1,
+    `${favCount} → ${favCountAfter}`);
+
   /* ---- コンソールエラー ---- */
   check('コンソールエラーが出ない', consoleErrors.length === 0,
     consoleErrors.slice(0, 3).join(' | '));

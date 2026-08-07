@@ -46,6 +46,7 @@ export class RideSummary {
     set(this.root, 'route', session.routeName ?? 'ライド');
 
     this._renderZones(session.zoneSeconds ?? {});
+    this._renderGhost(session, context.ghost);
     this._renderEncouragement(session, context);
 
     this.root.hidden = false;
@@ -99,6 +100,32 @@ export class RideSummary {
         ? `<p class="zone-note">脂肪燃焼ゾーン(Z2)に <strong>${formatDuration(fatBurnSec)}</strong> 滞在しました。</p>`
         : ''}
     `;
+  }
+
+  /** 前回この道を走ったときとのタイム差（あれば） */
+  _renderGhost(session, ghost) {
+    const el = this.root.querySelector('[data-summary="ghost"]');
+    if (!el) return;
+
+    if (!ghost) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+
+    const deltaSec = session.elapsedSec - ghost.elapsedSec;
+    const abs = formatDuration(Math.abs(deltaSec));
+
+    if (deltaSec === 0) {
+      el.className = 'ghost-result is-even';
+      el.textContent = '前回と同じタイムでした。';
+    } else if (deltaSec < 0) {
+      el.className = 'ghost-result is-ahead';
+      el.textContent = `前回より ${abs} 速く走れました。`;
+    } else {
+      el.className = 'ghost-result is-behind';
+      el.textContent = `前回より ${abs} 遅いタイムでした。`;
+    }
   }
 
   /** 継続を後押しする一言。数字だけより効く */

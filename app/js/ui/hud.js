@@ -23,6 +23,8 @@ export class Hud {
       kcalNote: root.querySelector('[data-hud="kcalNote"]'),
       zone: root.querySelector('[data-hud="zone"]'),
       speedNote: root.querySelector('[data-hud="speedNote"]'),
+      ghost: root.querySelector('[data-hud="ghost"]'),
+      ghostRow: root.querySelector('[data-hud="ghostRow"]'),
       progressBar: root.querySelector('[data-hud="progressBar"]'),
       progressText: root.querySelector('[data-hud="progressText"]'),
     };
@@ -75,6 +77,32 @@ export class Hud {
     if (this.el.grade) {
       this.el.grade.classList.toggle('is-climb', s.grade > 1.5);
       this.el.grade.classList.toggle('is-descent', s.grade < -1.5);
+    }
+
+    this._updateGhost(s);
+  }
+
+  /** 前回この道を走ったときとの差分を出す。先行/遅れが一目で分かるようにする */
+  _updateGhost(s) {
+    if (!this.el.ghostRow) return;
+
+    if (!s.hasGhost) {
+      this.el.ghostRow.hidden = true;
+      return;
+    }
+    this.el.ghostRow.hidden = false;
+
+    if (s.ghostDeltaSec === null) {
+      this._set('ghost', '--');
+      return;
+    }
+    // 負値＝前回より速い（先行）。プラス表示は「遅れ」で直感的に一致させる
+    const ahead = s.ghostDeltaSec < 0;
+    const abs = formatDuration(Math.abs(s.ghostDeltaSec));
+    this._set('ghost', `${ahead ? '−' : '+'}${abs}`);
+    if (this.el.ghost) {
+      this.el.ghost.classList.toggle('is-ahead', ahead);
+      this.el.ghost.classList.toggle('is-behind', !ahead);
     }
   }
 }

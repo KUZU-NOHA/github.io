@@ -32,6 +32,9 @@ export class RideEngine extends EventTarget {
    * @param {number} opts.speedMultiplier 映像速度の倍率（F-303）
    * @param {boolean} opts.gradeEnabled   勾配連動の ON/OFF
    * @param {boolean} opts.loop           終点到達後に始点へ戻るか
+   * @param {object|null} opts.ghost      比較対象の過去走行（{distanceLog} を持つセッション）。
+   *   loop ルートでは距離が周回のたびに巻き戻り単調増加でなくなるため、
+   *   ゴースト比較は非 loop ルートに限定する
    */
   constructor({
     path,
@@ -42,6 +45,7 @@ export class RideEngine extends EventTarget {
     speedMultiplier = 1,
     gradeEnabled = true,
     loop = false,
+    ghost = null,
   }) {
     super();
     this.path = path;
@@ -51,6 +55,7 @@ export class RideEngine extends EventTarget {
     this.speedMultiplier = speedMultiplier;
     this.gradeEnabled = gradeEnabled;
     this.loop = loop;
+    this.ghost = !loop && ghost?.distanceLog?.length > 1 ? ghost : null;
 
     this.state = RideState.IDLE;
     this.distanceM = 0;
@@ -58,6 +63,12 @@ export class RideEngine extends EventTarget {
     this.grade = 0;
     this.position = pointAt(path, 0);
     this.smoothHeading = this.position.heading;
+
+    // 一定距離ごとに (距離, 経過時間) を記録する。次回同じルートを
+    // 走ったときのゴーストとして使う。間隔を空けて保存量を抑える。
+    this.distanceLog = [{ distanceM: 0, elapsedSec: 0 }];
+    this._logIntervalM = 25;
+    this.ghostDeltaSec = null; // 正=ゴーストより遅れている、負=先行
 
     this.live = { speedKmh: 0, cadenceRpm: 0, powerW: 0, heartRateBpm: 0 };
     this.calories = new CalorieAccumulator({ weightKg });
@@ -120,6 +131,16 @@ export class RideEngine extends EventTarget {
     this.state = RideState.FINISHED;
     this._stopLoop();
     this.source.pause?.();
+
+    // 完走前に途中終了した場合、直近の記録から次のログ間隔(25m)未満
+    // しか進んでいないと、最終地点が distanceLog に載らないまま終わる。
+    // これでは次回このルートを走ったときにゴーストとして使えない
+    // （distanceLog.length > 1 を満たさない）ため、終了時点を必ず確定させる。
+    const last = this.distanceLog[this.distanceLog.length - 1];
+    if (last.distanceM < this.distanceM) {
+      this.distanceLog.push({ distanceM: this.distanceM, elapsedSec: this.elapsedSec });
+    }
+
     this.dispatchEvent(new CustomEvent('statechange', { detail: this.state }));
     this.dispatchEvent(new CustomEvent('finish', { detail: this.summary() }));
   }
@@ -188,6 +209,16 @@ export class RideEngine extends EventTarget {
       this.source.setGrade(this.grade);
     }
 
+    // 距離ログとゴースト比較
+    const lastLogged = this.distanceLog[this.distanceLog.length - 1];
+    if (this.distanceM - lastLogged.distanceM >= this._logIntervalM || this.distanceM >= total) {
+      this.distanceLog.push({ distanceM: this.distanceM, elapsedSec: this.elapsedSec });
+    }
+    if (this.ghost) {
+      const ghostElapsed = interpolateElapsedAt(this.ghost.distanceLog, this.distanceM);
+      this.ghostDeltaSec = ghostElapsed === null ? null : this.elapsedSec - ghostElapsed;
+    }
+
     // 消費カロリー
     this.calories.add(this.live, dtSec);
 
@@ -248,6 +279,8 @@ export class RideEngine extends EventTarget {
       kcal: this.calories.kcal,
       kj: this.calories.kj,
       calorieIsEstimate: this.calories.isEstimate,
+      ghostDeltaSec: this.ghostDeltaSec,
+      hasGhost: !!this.ghost,
     };
   }
 
@@ -268,10 +301,37 @@ export class RideEngine extends EventTarget {
       zoneSeconds: Object.fromEntries(
         Object.entries(this.zoneSeconds).map(([k, v]) => [k, Math.round(v)])
       ),
+      // loop 走行では距離が周回のたびに巻き戻るため、次回のゴーストとして
+      // 使うと誤った比較になる。loop の場合は保存しない
+      distanceLog: this.loop ? [] : this.distanceLog,
     };
   }
 }
 
 function round1(n) {
   return Math.round(n * 10) / 10;
+}
+
+/**
+ * 距離ログから、指定距離地点での経過時間を線形補間で求める。
+ * ログは距離について単調増加である前提（loop ルートでは呼ばない）。
+ */
+function interpolateElapsedAt(log, distanceM) {
+  if (!log || log.length === 0) return null;
+  if (distanceM <= log[0].distanceM) return log[0].elapsedSec;
+  const lastPoint = log[log.length - 1];
+  if (distanceM >= lastPoint.distanceM) return lastPoint.elapsedSec;
+
+  let lo = 0;
+  let hi = log.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (log[mid].distanceM <= distanceM) lo = mid;
+    else hi = mid;
+  }
+  const a = log[lo];
+  const b = log[hi];
+  const span = b.distanceM - a.distanceM;
+  const t = span > 0 ? (distanceM - a.distanceM) / span : 0;
+  return a.elapsedSec + (b.elapsedSec - a.elapsedSec) * t;
 }

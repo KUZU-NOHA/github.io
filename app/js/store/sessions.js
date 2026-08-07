@@ -8,9 +8,10 @@
  */
 
 const DB_NAME = 'vcycling';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_SESSIONS = 'sessions';
 const STORE_WEIGHTS = 'weights';
+const STORE_ROUTES = 'routes';
 
 let dbPromise = null;
 
@@ -22,7 +23,7 @@ function openDb() {
       return;
     }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (e) => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
         const s = db.createObjectStore(STORE_SESSIONS, {
@@ -34,6 +35,16 @@ function openDb() {
       if (!db.objectStoreNames.contains(STORE_WEIGHTS)) {
         db.createObjectStore(STORE_WEIGHTS, { keyPath: 'date' });
       }
+      // v1→v2: お気に入りルート（F-106）とゴースト走行のための保存先
+      if (e.oldVersion < 2 && !db.objectStoreNames.contains(STORE_ROUTES)) {
+        const r = db.createObjectStore(STORE_ROUTES, {
+          keyPath: 'id',
+          autoIncrement: true,
+        });
+        r.createIndex('savedAt', 'savedAt');
+      }
+      // v1 で保存済みのセッションには routeKey が無いため、
+      // ゴースト走行の対象外として扱われる（後方互換・エラーにはしない）
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -85,6 +96,72 @@ export async function listWeights() {
 
 export async function deleteWeight(date) {
   return tx(STORE_WEIGHTS, 'readwrite', (s) => s.delete(date));
+}
+
+/* ---------- お気に入りルート (F-106) ---------- */
+
+/**
+ * ルートを保存する。
+ * @param {object} route {name, path, elevations, loop, mode}
+ * @returns {number} 発行された id
+ */
+export async function saveRoute(route) {
+  return tx(STORE_ROUTES, 'readwrite', (s) =>
+    s.add({ ...route, savedAt: new Date().toISOString() })
+  );
+}
+
+export async function listRoutes() {
+  const all = await tx(STORE_ROUTES, 'readonly', (s) => s.getAll());
+  return (all ?? []).sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
+}
+
+export async function deleteRoute(id) {
+  return tx(STORE_ROUTES, 'readwrite', (s) => s.delete(id));
+}
+
+/**
+ * ルートの同一性を判定するキーを作る。
+ *
+ * ゴースト走行や走行履歴の集計で「同じルートを走ったか」を判定するために使う。
+ * 座標そのものを比較するのは重いため、始点・終点・距離・点数から
+ * 十分に一意なキーを合成する（厳密な一致は要求せず、実用上の識別で足りる）。
+ *
+ * @param {object} path buildPath() の戻り値
+ */
+export function routeKeyFor(path) {
+  if (!path?.points?.length) return null;
+  const a = path.points[0];
+  const b = path.points[path.points.length - 1];
+  const round = (n) => Math.round(n * 1000) / 1000; // 約100m精度
+  return [
+    round(a.lat), round(a.lng), round(b.lat), round(b.lng),
+    Math.round(path.totalDistanceM), path.points.length,
+  ].join('|');
+}
+
+/* ---------- ゴースト走行 ---------- */
+
+/**
+ * 同じルートを走った過去のセッションから、最も速いものを選ぶ。
+ * ゴーストとして「越えるべき目標」を示すのに使う。
+ *
+ * distanceLog（distanceM→elapsedSec の対応表）を持たないセッションは
+ * ゴーストとして使えないため除外する（v1 で保存された古い記録など）。
+ *
+ * @param {Array} sessions listSessions() の戻り値
+ * @param {string} routeKey routeKeyFor() の戻り値
+ * @param {number} excludeId 今回保存したセッション自身を除外する場合に指定
+ */
+export function bestGhostFor(sessions, routeKey, excludeId = null) {
+  if (!routeKey) return null;
+  const candidates = sessions.filter(
+    (s) => s.routeKey === routeKey && s.id !== excludeId && s.distanceLog?.length > 1
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, s) =>
+    s.elapsedSec < best.elapsedSec ? s : best
+  );
 }
 
 /* ---------- 集計 ---------- */

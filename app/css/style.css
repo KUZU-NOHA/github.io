@@ -160,6 +160,9 @@ button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
 }
 .preset strong { font-size: 1rem; }
 
+.favorite-save-form { margin-top: .8rem; }
+.favorite-save-form input { flex: 1 1 14rem; }
+
 .route-summary {
   display: flex; gap: 1rem; flex-wrap: wrap; align-items: baseline;
   margin-bottom: .9rem; font-size: .95rem;
@@ -353,6 +356,33 @@ button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
 .session-detail dd {
   margin: 0; font-size: .9rem; font-variant-numeric: tabular-nums;
 }
+
+/* ---------- ゴースト走行 ---------- */
+
+.ghost-label { font-size: .68rem; opacity: .7; display: block; margin-bottom: .1rem; }
+.ghost.is-ahead { color: #4ade80; }
+.ghost.is-behind { color: #fb923c; }
+
+.ghost-result {
+  font-size: .9rem; font-weight: 600; margin: .8rem 0;
+  padding: .6rem .85rem; border-radius: 8px;
+}
+.ghost-result.is-ahead { background: rgba(74, 222, 128, .14); color: #16a34a; }
+.ghost-result.is-behind { background: rgba(251, 146, 60, .14); color: #c2410c; }
+.ghost-result.is-even { background: var(--bg); color: var(--muted); }
+
+/* ---------- お気に入りルート ---------- */
+
+.favorite-list li {
+  display: flex; align-items: stretch; gap: .4rem;
+}
+.favorite-list .preset { flex: 1; }
+.icon-btn {
+  flex: 0 0 auto; width: 2.4rem;
+  display: grid; place-items: center;
+  font-size: 1.1rem; color: var(--muted); line-height: 1;
+}
+.icon-btn:hover { color: var(--error); border-color: var(--error); }
 
 /* ---------- 走行完了サマリー ---------- */
 

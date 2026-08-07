@@ -106,6 +106,17 @@
     <h2>ルートを選ぶ</h2>
 
     <div class="card">
+      <h3>お気に入り</h3>
+      <p class="muted">
+        保存したルートです。同じルートを走ると、前回のタイムと比較しながら走れます。
+      </p>
+      <ul class="preset-list favorite-list" id="favorite-list"></ul>
+      <p class="muted" id="favorite-empty">
+        まだ保存されたルートがありません。ルートを選ぶと下に「お気に入りに保存」ボタンが出ます。
+      </p>
+    </div>
+
+    <div class="card">
       <h3>プリセット</h3>
       <p class="muted">3D タイルのカバレッジが確実な地域です。まずはここから。</p>
       <ul class="preset-list" id="preset-list"></ul>
@@ -138,7 +149,15 @@
     <div class="card is-highlight" id="route-ready" hidden>
       <h3>選択中のルート</h3>
       <div class="route-summary" id="route-summary"></div>
-      <button type="button" class="primary large" data-nav="ride">走行画面へ →</button>
+      <div class="row">
+        <button type="button" class="primary large" data-nav="ride">走行画面へ →</button>
+        <button type="button" id="route-favorite">☆ お気に入りに保存</button>
+      </div>
+      <form class="row favorite-save-form" id="favorite-save-form" hidden>
+        <input type="text" id="favorite-name-input" placeholder="ルート名" maxlength="60">
+        <button type="submit" class="primary">保存</button>
+        <button type="button" id="favorite-save-cancel">キャンセル</button>
+      </form>
     </div>
   </div>
 </section>
@@ -178,6 +197,10 @@
             <small class="note-inline" data-hud="kcalNote"></small>
           </div>
           <div class="metric"><span class="value zone" data-hud="zone">--</span></div>
+          <div class="metric" data-hud="ghostRow" hidden>
+            <span class="ghost-label">前回比</span>
+            <span class="value ghost" data-hud="ghost">--</span>
+          </div>
         </div>
         <div class="progress">
           <div class="progress-bar" data-hud="progressBar"></div>
@@ -350,6 +373,8 @@
       <div><dt>平均速度</dt><dd data-summary="avgSpeed">--</dd></div>
       <div><dt>平均心拍</dt><dd data-summary="avgHr">--</dd></div>
     </dl>
+
+    <p class="ghost-result" data-summary="ghost" hidden></p>
 
     <h3>心拍ゾーン</h3>
     <div data-summary="zones"></div>
