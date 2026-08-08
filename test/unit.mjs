@@ -34,6 +34,7 @@ import {
   BIKE_PROFILES, profileFor, trainerWindResistance,
 } from '../app/js/ride/physics.js';
 import { expandToPathPoints } from '../app/js/map/route.js';
+import { latLngToWorldPoint, zoomForBounds } from '../app/js/map/fallback2d.js';
 import { RideEngine } from '../app/js/ride/engine.js';
 import {
   currentStreak, kcalWithin, zoneTotals, predictGoalDate, sessionsToCsv,
@@ -199,6 +200,44 @@ test('expandToPathPoints: 間引いた標高を元の点数へ戻す', () => {
   assert.deepEqual(expandToPathPoints([0, 10], 3), [0, 5, 10]);
   assert.equal(expandToPathPoints([], 5).length, 0);
   assert.deepEqual(expandToPathPoints([1, 2, 3], 3), [1, 2, 3]);
+});
+
+/* ============ 2Dフォールバックの背景地図投影（Web Mercator） ============ */
+
+test('latLngToWorldPoint: 赤道・経度0はタイルの中心になる', () => {
+  const p = latLngToWorldPoint(0, 0);
+  assert.ok(Math.abs(p.x - 128) < 1e-9, `x: ${p.x}`);
+  assert.ok(Math.abs(p.y - 128) < 1e-9, `y: ${p.y}`);
+});
+
+test('latLngToWorldPoint: 経度180/-180はタイルの右端/左端になる', () => {
+  assert.ok(Math.abs(latLngToWorldPoint(0, 180).x - 256) < 1e-9);
+  assert.ok(Math.abs(latLngToWorldPoint(0, -180).x - 0) < 1e-9);
+});
+
+test('latLngToWorldPoint: 北半球ほどyが小さくなる（上に行く）', () => {
+  const equator = latLngToWorldPoint(0, 0);
+  const north = latLngToWorldPoint(45, 0);
+  const south = latLngToWorldPoint(-45, 0);
+  assert.ok(north.y < equator.y && equator.y < south.y);
+});
+
+test('zoomForBounds: 狭い範囲ほど大きいズームになる', () => {
+  const narrow = { minLat: 35.68, maxLat: 35.681, minLng: 139.76, maxLng: 139.761 };
+  const wide = { minLat: 30, maxLat: 40, minLng: 130, maxLng: 145 };
+  const zNarrow = zoomForBounds(narrow, 640, 640);
+  const zWide = zoomForBounds(wide, 640, 640);
+  assert.ok(zNarrow > zWide, `狭い ${zNarrow} / 広い ${zWide}`);
+});
+
+test('zoomForBounds: maxZoom を超えない', () => {
+  const tiny = { minLat: 35.6800, maxLat: 35.68001, minLng: 139.76, maxLng: 139.76001 };
+  assert.ok(zoomForBounds(tiny, 640, 640, 20) <= 20);
+});
+
+test('zoomForBounds: 0未満にはならない', () => {
+  const huge = { minLat: -85, maxLat: 85, minLng: -179, maxLng: 179 };
+  assert.ok(zoomForBounds(huge, 100, 100) >= 0);
 });
 
 /* ============ FTMS: Indoor Bike Data ============ */

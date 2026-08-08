@@ -295,6 +295,88 @@ try {
   await page.screenshot({ path: 'test/screenshot-failure.png' }).catch(() => {});
 } finally {
   await browser.close();
+}
+
+/* ============================================================
+ * 2D フォールバックの背景地図取得（別コンテキストで独立に検証）
+ *
+ * 本物の API キーは無いため、Google Maps JavaScript API 本体をブロック
+ * して 3D 初期化を意図的に失敗させ、Fallback2D に確実に落とす。
+ * Static Maps API へのリクエストはダミー画像で応答し、
+ *   - 正しいパラメータ（center/zoom/size）でちょうど1回だけ呼ばれること
+ *   - 画像取得後もエラー無く描画・走行が続くこと
+ *   - ウィンドウリサイズ後も投影計算が壊れないこと
+ * を確認する。
+ * ============================================================ */
+try {
+  const bgBrowser = await chromium.launch(
+    localChrome ? { executablePath: localChrome } : {}
+  );
+  const bgPage = await bgBrowser.newPage({ viewport: { width: 1280, height: 860 } });
+
+  const bgConsoleErrors = [];
+  bgPage.on('console', (m) => {
+    if (m.type() === 'error') bgConsoleErrors.push(m.text());
+  });
+  bgPage.on('pageerror', (e) => bgConsoleErrors.push(`pageerror: ${e.message}`));
+
+  const staticMapRequests = [];
+  await bgPage.route('**/maps.googleapis.com/maps/api/js**', (route) => route.abort());
+  // selectRoute() は API キーがあると Elevation API も呼ぶ。モックしないと
+  // 実ネットワークへのリクエストが詰まり、ルート選択自体が進まなくなる
+  await bgPage.route('**/maps.googleapis.com/maps/api/elevation/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK","results":[]}' })
+  );
+  const dummyPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  );
+  await bgPage.route('**/maps.googleapis.com/maps/api/staticmap**', (route) => {
+    staticMapRequests.push(route.request().url());
+    route.fulfill({ status: 200, contentType: 'image/png', body: dummyPng });
+  });
+
+  await bgPage.goto(`http://localhost:${PORT}/app/`, { waitUntil: 'networkidle' });
+  await bgPage.evaluate(() => localStorage.clear());
+  // 通信は全てモックするので実キーは不要。hasApiKey() を true にするためだけの値
+  await bgPage.evaluate(() => localStorage.setItem('vcycling.apiKey', 'TEST_KEY_FOR_MOCK'));
+  await bgPage.reload({ waitUntil: 'networkidle' });
+
+  await bgPage.click('[data-preset="golden-gate"]');
+  await bgPage.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
+  await bgPage.click('#route-ready [data-nav="ride"]');
+  await bgPage.click('#connect-sim');
+  await bgPage.click('#ride-start');
+  await bgPage.waitForTimeout(1500);
+
+  check('Maps JS API ブロック時は 2D フォールバックの canvas が出る',
+    (await bgPage.locator('#map-stage canvas').count()) > 0);
+
+  check('Static Maps API へのリクエストが1回だけ発生する',
+    staticMapRequests.length === 1, `${staticMapRequests.length} 回`);
+
+  const reqUrl = staticMapRequests[0] ?? '';
+  check('リクエストに center/zoom/size が含まれる',
+    /center=/.test(reqUrl) && /zoom=\d+/.test(reqUrl) && /size=\d+x\d+/.test(reqUrl),
+    reqUrl);
+
+  // ウィンドウリサイズ後も投影計算がエラーにならず描画が続くこと
+  await bgPage.setViewportSize({ width: 800, height: 1000 });
+  await bgPage.waitForTimeout(500);
+  check('リサイズ後もエラー無く canvas が残る',
+    (await bgPage.locator('#map-stage canvas').count()) > 0);
+
+  // 意図的にブロックした Maps JS API 自体のネットワークエラーは想定内なので除外する
+  const unexpectedErrors = bgConsoleErrors.filter(
+    (e) => !/net::ERR_FAILED|net::ERR_CONNECTION_RESET|maps\/api\/js/.test(e)
+  );
+  check('想定外のコンソールエラーが出ない', unexpectedErrors.length === 0,
+    unexpectedErrors.slice(0, 3).join(' | '));
+
+  await bgBrowser.close();
+} catch (err) {
+  check('背景地図シナリオで例外が発生していない', false, err.message);
+} finally {
   server.close();
 }
 
