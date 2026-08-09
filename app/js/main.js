@@ -78,6 +78,7 @@ async function init() {
   bindRouteScreen();
   bindRideScreen();
   bindDashboard();
+  bindFullscreen();
   renderSettingsForm();
   renderPresets();
   renderFavorites();
@@ -572,12 +573,12 @@ function bindRideScreen() {
   });
 
   document.getElementById('ride-start').addEventListener('click', startRide);
+  // 一時停止・終了は、全画面表示中に ride-side（サイドパネル）が隠れても
+  // 操作できるよう、映像上のボタン（hud-pause / hud-finish）にも同じ処理を割り当てる
   document.getElementById('ride-pause').addEventListener('click', togglePause);
-  document.getElementById('ride-finish').addEventListener('click', () => {
-    if (app.engine && confirm('走行を終了して記録を保存しますか？')) {
-      app.engine.finish();
-    }
-  });
+  document.getElementById('hud-pause').addEventListener('click', togglePause);
+  document.getElementById('ride-finish').addEventListener('click', finishRide);
+  document.getElementById('hud-finish').addEventListener('click', finishRide);
 
   document.getElementById('sv-toggle').addEventListener('click', async () => {
     if (!app.streetView) {
@@ -742,13 +743,22 @@ function onTick(s) {
 }
 
 function onStateChange(state) {
+  const isIdleOrFinished = state === RideState.IDLE || state === RideState.FINISHED;
+  const pauseLabel = state === RideState.PAUSED ? '再開' : '一時停止';
+
   const pauseBtn = document.getElementById('ride-pause');
   const startBtn = document.getElementById('ride-start');
-  pauseBtn.textContent = state === RideState.PAUSED ? '再開' : '一時停止';
-  pauseBtn.disabled = state === RideState.IDLE || state === RideState.FINISHED;
+  pauseBtn.textContent = pauseLabel;
+  pauseBtn.disabled = isIdleOrFinished;
   startBtn.disabled = state === RideState.RIDING;
-  document.getElementById('ride-finish').disabled =
-    state === RideState.IDLE || state === RideState.FINISHED;
+  document.getElementById('ride-finish').disabled = isIdleOrFinished;
+
+  // 映像上の複製ボタン（全画面表示中に使う）も同期する
+  const hudPauseBtn = document.getElementById('hud-pause');
+  hudPauseBtn.disabled = isIdleOrFinished;
+  hudPauseBtn.textContent = state === RideState.PAUSED ? '▶' : '⏸';
+  hudPauseBtn.setAttribute('aria-label', pauseLabel);
+  document.getElementById('hud-finish').disabled = isIdleOrFinished;
 }
 
 function togglePause() {
@@ -757,8 +767,72 @@ function togglePause() {
   else app.engine.start();
 }
 
+function finishRide() {
+  if (app.engine && confirm('走行を終了して記録を保存しますか？')) {
+    app.engine.finish();
+  }
+}
+
+/**
+ * 映像+HUD部分（ride-stage）だけを全画面表示にする。
+ * サイドパネル(ride-side)は全画面中は見えなくなるため、最低限の操作
+ * （一時停止・終了）は HUD 上のボタンに複製してある（onStateChange 参照）。
+ */
+function bindFullscreen() {
+  const stage = document.getElementById('ride-stage');
+  const btn = document.getElementById('fullscreen-toggle');
+
+  if (!document.fullscreenEnabled) {
+    // Safari 等、Fullscreen API 非対応環境ではボタンごと隠す
+    btn.hidden = true;
+    return;
+  }
+
+  const toggle = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      stage.requestFullscreen().catch((err) => {
+        toast(`全画面表示にできませんでした: ${err.message}`, 'warn');
+      });
+    }
+  };
+
+  btn.addEventListener('click', toggle);
+
+  document.addEventListener('fullscreenchange', () => {
+    const isFull = document.fullscreenElement === stage;
+    btn.textContent = isFull ? '⤢' : '⛶';
+    btn.title = isFull ? '全画面を解除 (F)' : '全画面表示 (F)';
+    btn.setAttribute('aria-label', isFull ? '全画面を解除' : '全画面表示');
+
+    // Fallback2D の canvas はピクセル単位でサイズを保持しており、
+    // window の resize イベントで更新される。フルスクリーン切替時に
+    // このイベントが確実に発火するとは限らないため明示的に発火させる。
+    // レイアウト確定後に呼びたいので1フレーム待つ
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  });
+
+  // F キーですぐ切り替えられるようにする（走行画面表示中のみ、
+  // 入力欄にフォーカスがあるときは通常の文字入力を優先する）
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 'f' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (document.getElementById('screen-ride').hidden) return;
+    const el = document.activeElement;
+    const isTyping = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    if (isTyping) return;
+    e.preventDefault();
+    toggle();
+  });
+}
+
 async function onFinish(summary) {
   document.getElementById('ride-stage').classList.remove('is-riding');
+  // 走行完了サマリーは ride-stage の外側にあるため、全画面表示のままだと
+  // 隠れて見えなくなる。終了時は必ず解除しておく
+  if (document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => {});
+  }
   const session = {
     ...summary,
     routeName: app.route.name,

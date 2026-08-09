@@ -160,11 +160,60 @@ try {
     Math.abs(stillPaused.distance - paused.distance) < 0.01,
     `${paused.distance} → ${stillPaused.distance} km`);
 
-  /* ---- 終了とサマリー ---- */
-  page.on('dialog', (d) => d.accept());
-  await page.click('#ride-finish');
-  await page.waitForTimeout(800);
+  /* ---- 全画面表示 ---- */
+  const fullscreenSupported = await page.evaluate(() => document.fullscreenEnabled);
+  if (fullscreenSupported) {
+    // HUD 上の複製ボタンで再開できることを確認（サイドパネルのボタンと同期する）
+    await page.click('#hud-pause');
+    await page.waitForTimeout(300);
+    check('HUDの一時停止ボタンで再開できる',
+      (await page.locator('#ride-pause').innerText()) === '一時停止');
 
+    await page.click('#fullscreen-toggle');
+    await page.waitForTimeout(600);
+
+    const stageState = await page.evaluate(() => {
+      const el = document.getElementById('ride-stage');
+      const r = el.getBoundingClientRect();
+      return {
+        isFullscreenElement: document.fullscreenElement === el,
+        matchesViewport: Math.abs(r.width - window.innerWidth) < 2
+          && Math.abs(r.height - window.innerHeight) < 2,
+      };
+    });
+    check('全画面表示で ride-stage がビューポート全体になる',
+      stageState.isFullscreenElement && stageState.matchesViewport,
+      JSON.stringify(stageState));
+
+    const canvasResized = await page.evaluate(() => {
+      const canvas = document.querySelector('#map-stage canvas');
+      const stage = document.getElementById('ride-stage');
+      if (!canvas) return true; // 3D モード等で canvas が無い場合は対象外
+      const dpr = window.devicePixelRatio || 1;
+      return Math.abs(canvas.width - Math.round(stage.clientWidth * dpr)) < 4;
+    });
+    check('全画面化で 2D フォールバックの canvas も追従してリサイズされる', canvasResized);
+
+    check('全画面中も HUD の一時停止ボタンが有効', !(await page.locator('#hud-pause').isDisabled()));
+    check('全画面中も HUD の終了ボタンが有効', !(await page.locator('#hud-finish').isDisabled()));
+
+    // 全画面のまま HUD 側の終了ボタンを押す → 自動解除されてサマリーが見えること
+    page.on('dialog', (d) => d.accept());
+    await page.click('#hud-finish');
+    await page.waitForTimeout(800);
+
+    check('全画面中に終了すると自動的に解除される',
+      !(await page.evaluate(() => !!document.fullscreenElement)));
+  } else {
+    check('Fullscreen API 非対応環境では全画面ボタンが隠れる',
+      await page.locator('#fullscreen-toggle').isHidden());
+
+    page.on('dialog', (d) => d.accept());
+    await page.click('#ride-finish');
+    await page.waitForTimeout(800);
+  }
+
+  /* ---- 終了とサマリー ---- */
   check('走行完了サマリーが表示される', await page.locator('#ride-summary').isVisible());
   const summaryDistance = await page.locator('[data-summary="distance"]').innerText();
   check('サマリーに距離が出る', parseFloat(summaryDistance) > 0, `${summaryDistance} km`);
@@ -204,6 +253,18 @@ try {
   check('2回目でも標高プロファイルが更新される',
     profileHtml.includes('polyline') || profileHtml.trim() === '',
     profileHtml.trim() === '' ? '標高データなしのため空（想定どおり）' : '描画あり');
+
+  if (fullscreenSupported) {
+    // F キーのショートカットでも切り替えられることを確認
+    await page.keyboard.press('f');
+    await page.waitForTimeout(500);
+    check('Fキーで全画面表示に切り替わる',
+      await page.evaluate(() => !!document.fullscreenElement));
+    await page.keyboard.press('f');
+    await page.waitForTimeout(500);
+    check('Fキーで全画面表示を解除できる',
+      !(await page.evaluate(() => !!document.fullscreenElement)));
+  }
 
   await page.click('#ride-finish');
   await page.waitForTimeout(800);

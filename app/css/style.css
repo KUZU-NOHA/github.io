@@ -204,6 +204,42 @@ button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
   color: #64748b; font-size: .95rem; padding: 2rem; text-align: center;
 }
 
+/* 映像上に浮かせる操作ボタン（一時停止・終了・全画面）。
+   .hud は pointer-events:none のため、その外側の独立レイヤーとして置く。
+   全画面表示中は ride-side（サイドパネル）が見えなくなるので、
+   最低限の操作をここに複製している。 */
+.stage-controls {
+  position: absolute; top: .7rem; z-index: 20;
+  display: flex; gap: .4rem;
+}
+.stage-controls-left { left: .7rem; }
+.stage-controls-right { right: .7rem; }
+
+.stage-icon-btn {
+  width: 2.5rem; height: 2.5rem; padding: 0;
+  display: grid; place-items: center;
+  background: rgba(6, 12, 24, .55);
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+}
+.stage-icon-btn:hover:not(:disabled) { background: rgba(6, 12, 24, .8); border-color: var(--accent); }
+.stage-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* 全画面表示中は角丸・枠線を消し、画面いっぱいに使う。
+   width/height を明示しないと、通常時の aspect-ratio: 16/10 が
+   ビューポートの高さから幅を逆算してしまい、横に余白ができる。 */
+.ride-stage:fullscreen {
+  width: 100%; height: 100%;
+  aspect-ratio: auto; min-height: 0;
+  border-radius: 0; border: none;
+}
+.ride-stage:fullscreen .hud { padding-bottom: 1.6rem; }
+
 /* HUD */
 
 .hud {
