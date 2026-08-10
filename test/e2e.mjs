@@ -26,6 +26,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8',
+  '.gpx': 'application/gpx+xml; charset=utf-8',
 };
 
 function startServer() {
@@ -48,44 +49,6 @@ const results = [];
 function check(name, ok, detail = '') {
   results.push({ name, ok, detail });
   console.log(`${ok ? '  ok  ' : ' FAIL '} ${name}${detail ? ` — ${detail}` : ''}`);
-}
-
-// decodePolyline（geo.js）の逆変換。Routes API のモック応答を作るためだけに使う簡易エンコーダ
-function encodePolylineValue(v) {
-  let n = v < 0 ? ~(v << 1) : v << 1;
-  let out = '';
-  while (n >= 0x20) {
-    out += String.fromCharCode((0x20 | (n & 0x1f)) + 63);
-    n >>= 5;
-  }
-  return out + String.fromCharCode(n + 63);
-}
-function encodePolyline(points) {
-  let out = '';
-  let prevLat = 0;
-  let prevLng = 0;
-  for (const p of points) {
-    const lat = Math.round(p.lat * 1e5);
-    const lng = Math.round(p.lng * 1e5);
-    out += encodePolylineValue(lat - prevLat) + encodePolylineValue(lng - prevLng);
-    prevLat = lat;
-    prevLng = lng;
-  }
-  return out;
-}
-/** computeRoutes の最小限のモック応答を組み立てる */
-function mockRoutesApiFulfill(points, distanceMeters) {
-  return {
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      routes: [{
-        polyline: { encodedPolyline: encodePolyline(points) },
-        distanceMeters,
-        duration: '900s',
-      }],
-    }),
-  };
 }
 
 const server = await startServer();
@@ -287,10 +250,11 @@ try {
   check('2回目の走行が開始できる', second.distance > 0, `${second.distance} km`);
   check('2回目でも経過時間が進む', second.time !== '00:00', second.time);
 
+  // プリセットは GPX 埋め込みの標高データを持つため、API キー無しでも
+  // 標高プロファイルが描画されるはず
   const profileHtml = await page.locator('#elevation-profile').innerHTML();
-  check('2回目でも標高プロファイルが更新される',
-    profileHtml.includes('polyline') || profileHtml.trim() === '',
-    profileHtml.trim() === '' ? '標高データなしのため空（想定どおり）' : '描画あり');
+  check('2回目でも標高プロファイルが更新される（GPX埋め込み標高）',
+    profileHtml.includes('polyline'), profileHtml.trim() === '' ? '空だった' : '描画あり');
 
   if (fullscreenSupported) {
     // F キーのショートカットでも切り替えられることを確認
@@ -422,17 +386,12 @@ try {
   const staticMapRequests = [];
   await bgPage.route('**/maps.googleapis.com/maps/api/js**', (route) => route.abort());
   // selectRoute() は API キーがあると Elevation API も呼ぶ。モックしないと
-  // 実ネットワークへのリクエストが詰まり、ルート選択自体が進まなくなる
+  // 実ネットワークへのリクエストが詰まり、ルート選択自体が進まなくなる。
+  // プリセットは同梱の GPX ファイルから読み込むため（routeFromPresetGpx）、
+  // GPX に標高が含まれておりこの Elevation API 自体は呼ばれない想定だが、
+  // 念のためモックしておく
   await bgPage.route('**/maps.googleapis.com/maps/api/elevation/**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK","results":[]}' })
-  );
-  // プリセットは Routes API で道路スナップを試みる（routeFromPresetRefined）。
-  // モックしないと実キーではない TEST_KEY_FOR_MOCK で本物のエンドポイントに
-  // 当ててしまい、失敗までの待ち時間でルート選択がタイムアウトする
-  await bgPage.route('**/routes.googleapis.com/**', (route) =>
-    route.fulfill(mockRoutesApiFulfill(
-      [{ lat: 37.8065, lng: -122.4750 }, { lat: 37.8341, lng: -122.4794 }], 3200
-    ))
   );
   const dummyPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -486,16 +445,16 @@ try {
 }
 
 /* ============================================================
- * プリセットルートの道路スナップ（Routes API の経由地点）
+ * プリセットは同梱の GPX から読み込まれ、Google API に依存しない
+ * （別コンテキストで独立に検証）
  *
- * プリセットの座標は手作業による粗い近似のため、そのまま直線で結ぶと
- * 建物や川を突っ切ってしまう問題があった（routeFromPresetRefined での対応）。
- * Routes API の computeRoutes をモックし、
- *   - プリセットの中間点が intermediates として送られること
- *   - 取得した経路（モック応答の polyline）に実際に差し替わること
- *   - API キーが無い場合は Routes API を呼ばず、警告付きで概算ルートに
- *     フォールバックすること
- * を確認する。
+ * プリセットはかつて手作業の概算座標を直線で結んでおり、建物や川を
+ * 突っ切ってしまう不具合があった。実際に Ride with GPS で記録した GPX
+ * ファイル（app/routes/*.gpx）を同梱する方式に切り替えたことで、
+ *   - Google のどの API も呼ばずに正確な経路と標高が手に入ること
+ *   - 実際の GPX データに基づく正しい距離が表示されること
+ * を確認する。Maps/Routes/Elevation の全エンドポイントを意図的に
+ * 遮断した状態でプリセットが問題なく動くことを検証する。
  * ============================================================ */
 try {
   const rpBrowser = await chromium.launch(
@@ -509,73 +468,41 @@ try {
   });
   rpPage.on('pageerror', (e) => rpConsoleErrors.push(`pageerror: ${e.message}`));
 
-  // 地図表示自体はこのシナリオの対象外なので、Maps JS はブロックして 2D フォールバックへ
-  await rpPage.route('**/maps.googleapis.com/maps/api/js**', (route) => route.abort());
-  await rpPage.route('**/maps.googleapis.com/maps/api/elevation/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK","results":[]}' })
-  );
-
-  // プリセット（皇居一周）の実座標とは明確に異なる、片道5.12km相当のダミー経路。
-  // 皇居一周は始点=終点のループなので2区間に分けてリクエストされ（fetchLoopRoute）、
-  // 同じダミー経路が2回連結されて表示距離は往復分の 20.50km になる。
-  // この距離が表示されていれば、モック応答へ実際に差し替わった証拠になる
-  let routesApiRequests = [];
-  await rpPage.route('**/routes.googleapis.com/**', (route) => {
-    routesApiRequests.push(JSON.parse(route.request().postData()));
-    route.fulfill(mockRoutesApiFulfill(
-      [{ lat: 35.6852, lng: 139.7528 }, { lat: 35.7200, lng: 139.7900 }, { lat: 35.6852, lng: 139.7528 }],
-      5124
-    ));
-  });
+  // プリセットは GPX 同梱データのみで完結するはずなので、Google 側は
+  // 一切モックせず遮断する。それでも壊れなければ依存していない証拠になる
+  await rpPage.route('**/maps.googleapis.com/**', (route) => route.abort());
+  await rpPage.route('**/routes.googleapis.com/**', (route) => route.abort());
 
   await rpPage.goto(`http://localhost:${PORT}/app/`, { waitUntil: 'networkidle' });
   await rpPage.evaluate(() => localStorage.clear());
-  // 通信は全てモックするので実キーは不要。hasApiKey() を true にするためだけの値
-  await rpPage.evaluate(() => localStorage.setItem('vcycling.apiKey', 'TEST_KEY_FOR_MOCK'));
   await rpPage.reload({ waitUntil: 'networkidle' });
+  await rpPage.click('#api-key-skip');
 
   await rpPage.click('[data-preset="imperial-palace"]');
   await rpPage.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
 
-  check('ループのプリセットは起点=終点を避けて2区間に分けてリクエストする',
-    routesApiRequests.length === 2 && routesApiRequests.every((b) => b.intermediates?.length > 0),
-    `呼び出し ${routesApiRequests.length} 回`);
-
-  check('各リクエストの始点と終点が同一座標にならない（退化ルートの原因だった不具合の再発防止）',
-    routesApiRequests.every((b) =>
-      b.origin.location.latLng.latitude !== b.destination.location.latLng.latitude
-      || b.origin.location.latLng.longitude !== b.destination.location.latLng.longitude
-    ),
-    JSON.stringify(routesApiRequests.map((b) => [b.origin.location.latLng, b.destination.location.latLng])));
-
   const rpSummary = await rpPage.locator('#route-summary').innerText();
-  check('道路スナップ後のルートに実際に差し替わる（モック応答2区間分の距離が表示される）',
-    rpSummary.includes('20.50 km'), rpSummary.replace(/\n/g, ' / '));
+  check('Google API 遮断下でも GPX 同梱プリセットが正確な距離で読み込める',
+    rpSummary.includes('5.01 km'), rpSummary.replace(/\n/g, ' / '));
+  check('GPX 埋め込みの標高データにより獲得標高が表示される（Elevation API 不使用）',
+    rpSummary.includes('獲得標高'), rpSummary.replace(/\n/g, ' / '));
 
-  /* ---- API キーが無い場合は Routes API を呼ばずフォールバックする ---- */
-  await rpPage.evaluate(() => localStorage.removeItem('vcycling.apiKey'));
-  await rpPage.reload({ waitUntil: 'networkidle' });
-  await rpPage.click('#api-key-skip');
-  routesApiRequests = [];
-
-  await rpPage.click('[data-preset="osaka-castle"]');
-  await rpPage.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
-
-  check('API キーが無い場合は Routes API を呼ばない',
-    routesApiRequests.length === 0, `${routesApiRequests.length} 回`);
-  const toastText = await rpPage.locator('#toast').innerText();
-  check('API キーが無い場合は概算ルートである旨の警告が出る',
-    toastText.includes('API キー') || toastText.includes('概算'), toastText);
+  await rpPage.click('#route-ready [data-nav="ride"]');
+  await rpPage.click('#connect-sim');
+  await rpPage.click('#ride-start');
+  await rpPage.waitForTimeout(2000);
+  const rpGrade = await rpPage.locator('[data-hud="grade"]').innerText();
+  check('実測の標高から勾配が算出される', rpGrade !== '+0.0%', rpGrade);
 
   const rpUnexpectedErrors = rpConsoleErrors.filter(
-    (e) => !/net::ERR_FAILED|net::ERR_CONNECTION_RESET|maps\/api\/js/.test(e)
+    (e) => !/net::ERR_FAILED|net::ERR_CONNECTION_RESET|maps\.googleapis\.com|routes\.googleapis\.com/.test(e)
   );
-  check('プリセット道路スナップのシナリオで想定外のコンソールエラーが出ない',
+  check('GPX プリセットのシナリオで想定外のコンソールエラーが出ない',
     rpUnexpectedErrors.length === 0, rpUnexpectedErrors.slice(0, 3).join(' | '));
 
   await rpBrowser.close();
 } catch (err) {
-  check('プリセット道路スナップのシナリオで例外が発生していない', false, err.message);
+  check('GPX プリセットのシナリオで例外が発生していない', false, err.message);
 } finally {
   server.close();
 }

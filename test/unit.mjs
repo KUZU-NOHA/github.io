@@ -33,10 +33,7 @@ import {
   speedFromWheel, cadenceFromCrank, isPlausibleSpeed, isPlausibleCadence,
   BIKE_PROFILES, profileFor, trainerWindResistance,
 } from '../app/js/ride/physics.js';
-import {
-  expandToPathPoints, fetchRoute, routeFromPreset, routeFromPresetRefined,
-  thinWaypoints, PRESET_ROUTES,
-} from '../app/js/map/route.js';
+import { expandToPathPoints, fetchRoute, PRESET_ROUTES } from '../app/js/map/route.js';
 import { setApiKey } from '../app/js/config.js';
 import { latLngToWorldPoint, zoomForBounds } from '../app/js/map/fallback2d.js';
 import { RideEngine } from '../app/js/ride/engine.js';
@@ -206,7 +203,7 @@ test('expandToPathPoints: 間引いた標高を元の点数へ戻す', () => {
   assert.deepEqual(expandToPathPoints([1, 2, 3], 3), [1, 2, 3]);
 });
 
-/* ============ ルート生成（プリセットの道路スナップ） ============ */
+/* ============ ルート生成 ============ */
 
 // config.js の getApiKey/setApiKey は localStorage を使う。Node には無いので
 // このテストファイル専用に最小限のインメモリ実装を用意する
@@ -254,31 +251,30 @@ async function withMockFetch(impl, fn) {
   }
 }
 
-test('thinWaypoints: 上限以下ならそのまま返す', () => {
-  const points = [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }];
-  assert.deepEqual(thinWaypoints(points, 20), points);
+test('PRESET_ROUTES: 全プリセットが id・gpxUrl・name を一意に持つ', () => {
+  assert.ok(PRESET_ROUTES.length >= 5);
+  const ids = new Set();
+  for (const p of PRESET_ROUTES) {
+    assert.ok(p.id && !ids.has(p.id), `id が重複または欠落: ${p.id}`);
+    ids.add(p.id);
+    assert.ok(p.gpxUrl && p.gpxUrl.endsWith('.gpx'), `gpxUrl が不正: ${p.id}`);
+    assert.ok(p.name && p.name.length > 0, `name が空: ${p.id}`);
+    assert.equal(typeof p.loop, 'boolean', `loop が boolean でない: ${p.id}`);
+  }
 });
 
-test('thinWaypoints: 上限を超えたら均等に間引いてちょうど上限数にする', () => {
-  const points = Array.from({ length: 47 }, (_, i) => ({ lat: i, lng: i }));
-  const thinned = thinWaypoints(points, 20);
-  assert.equal(thinned.length, 20);
-  thinned.forEach((p) => assert.ok(points.some((o) => o.lat === p.lat)));
-});
-
-test('fetchRoute: API キー未設定なら waypoints を渡してもエラーになる', async () => {
+test('fetchRoute: API キー未設定ならエラーになる', async () => {
   setApiKey('');
   await assert.rejects(
-    () => fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }, [{ lat: 0.5, lng: 0.5 }]),
+    () => fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }),
     /API キー/
   );
 });
 
-test('fetchRoute: waypoints を intermediates として Routes API に送る', async () => {
+test('fetchRoute: BICYCLE で成功すれば取得した経路を返す', async () => {
   setApiKey('TEST_KEY');
   const origin = { lat: 35.0, lng: 135.0 };
   const destination = { lat: 35.01, lng: 135.01 };
-  const waypoints = [{ lat: 35.002, lng: 135.002 }, { lat: 35.005, lng: 135.005 }];
   let capturedBody = null;
 
   await withMockFetch(
@@ -287,31 +283,33 @@ test('fetchRoute: waypoints を intermediates として Routes API に送る', a
       return {
         ok: true,
         json: async () => ({
-          routes: [{ polyline: { encodedPolyline: encodePolyline([origin, ...waypoints, destination]) } }],
+          routes: [{ polyline: { encodedPolyline: encodePolyline([origin, destination]) } }],
         }),
       };
     },
     async () => {
-      const result = await fetchRoute(origin, destination, waypoints);
+      const result = await fetchRoute(origin, destination);
       assert.equal(result.mode, 'BICYCLE');
-      assert.equal(result.path.points.length, 4);
+      assert.equal(result.path.points.length, 2);
+      // 自転車ルートは要件定義書 L-05 によりベータ表示の警告が必須
+      assert.ok(result.warning && result.warning.includes('ベータ'), result.warning);
     }
   );
 
   assert.ok(capturedBody, 'fetch が呼ばれていない');
-  assert.equal(capturedBody.intermediates.length, 2);
-  assert.deepEqual(capturedBody.intermediates[0].location.latLng, { latitude: 35.002, longitude: 135.002 });
   assert.deepEqual(capturedBody.origin.location.latLng, { latitude: 35.0, longitude: 135.0 });
   setApiKey('');
 });
 
-test('fetchRoute: waypoints を渡さなければ intermediates を含めない', async () => {
+test('fetchRoute: BICYCLE が失敗したら WALK にフォールバックする', async () => {
   setApiKey('TEST_KEY');
-  let capturedBody = null;
+  const calledModes = [];
 
   await withMockFetch(
     async (url, init) => {
-      capturedBody = JSON.parse(init.body);
+      const body = JSON.parse(init.body);
+      calledModes.push(body.travelMode);
+      if (body.travelMode === 'BICYCLE') return { ok: false, status: 404, text: async () => 'no route' };
       return {
         ok: true,
         json: async () => ({
@@ -319,125 +317,14 @@ test('fetchRoute: waypoints を渡さなければ intermediates を含めない'
         }),
       };
     },
-    () => fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })
-  );
-
-  assert.ok(capturedBody);
-  assert.ok(!('intermediates' in capturedBody));
-  setApiKey('');
-});
-
-test('routeFromPresetRefined: API キーが無ければ概算プリセットに警告を付けて返す', async () => {
-  setApiKey('');
-  const preset = PRESET_ROUTES[0];
-  const fallback = routeFromPreset(preset);
-  const result = await routeFromPresetRefined(preset);
-  assert.equal(result.path.totalDistanceM, fallback.path.totalDistanceM);
-  assert.equal(result.name, preset.name);
-  assert.ok(result.warning && result.warning.includes('API キー'), result.warning);
-});
-
-test('routeFromPresetRefined: 非ループのプリセットは1回のリクエストで経由地点付きに取得する', async () => {
-  setApiKey('TEST_KEY');
-  const preset = PRESET_ROUTES.find((p) => !p.loop); // 鴨川沿い等（loop: false）
-  const presetEnd = preset.points[preset.points.length - 1];
-  const refinedPoints = [
-    preset.points[0],
-    { lat: (preset.points[0].lat + presetEnd.lat) / 2, lng: (preset.points[0].lng + presetEnd.lng) / 2 },
-    presetEnd,
-  ];
-  let capturedBodies = [];
-
-  await withMockFetch(
-    async (url, init) => {
-      capturedBodies.push(JSON.parse(init.body));
-      return {
-        ok: true,
-        json: async () => ({ routes: [{ polyline: { encodedPolyline: encodePolyline(refinedPoints) } }] }),
-      };
-    },
     async () => {
-      const result = await routeFromPresetRefined(preset);
-      assert.equal(result.name, preset.name);
-      assert.equal(result.loop, preset.loop);
-      assert.equal(result.path.points.length, refinedPoints.length);
-      // BICYCLE ルートは要件定義書 L-05 によりベータ表示の警告が必須
-      assert.ok(result.warning && result.warning.includes('ベータ'), result.warning);
+      const result = await fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 });
+      assert.equal(result.mode, 'WALK');
+      assert.ok(result.warning.includes('徒歩'), result.warning);
     }
   );
 
-  assert.equal(capturedBodies.length, 1, 'ループでないプリセットは1回のリクエストで済むはず');
-  const body = capturedBodies[0];
-  assert.deepEqual(body.origin.location.latLng, {
-    latitude: preset.points[0].lat, longitude: preset.points[0].lng,
-  });
-  assert.deepEqual(body.destination.location.latLng, {
-    latitude: preset.points[preset.points.length - 1].lat,
-    longitude: preset.points[preset.points.length - 1].lng,
-  });
-  assert.equal(body.intermediates.length, preset.points.length - 2);
-  setApiKey('');
-});
-
-test('routeFromPresetRefined: ループのプリセットは起点=終点を避けて2区間に分けて取得する', async () => {
-  // 皇居一周のようなループ（始点=終点）を Routes API に1回のリクエストでそのまま
-  // 投げると、origin と destination が完全に同一座標になり、ルーティングエンジンが
-  // 経由地点を無視した退化ルート（施設の中を突っ切る等）を返すことがあった。
-  // 「2区間に分けてリクエストし、各リクエストでは起点≠終点にする」ことを検証する。
-  setApiKey('TEST_KEY');
-  const preset = PRESET_ROUTES.find((p) => p.loop); // 皇居一周
-  const legPoints = [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }]; // モック応答の中身は形状を問わない
-  const capturedBodies = [];
-
-  await withMockFetch(
-    async (url, init) => {
-      capturedBodies.push(JSON.parse(init.body));
-      return {
-        ok: true,
-        json: async () => ({ routes: [{ polyline: { encodedPolyline: encodePolyline(legPoints) } }] }),
-      };
-    },
-    async () => {
-      const result = await routeFromPresetRefined(preset);
-      assert.equal(result.loop, true);
-      // 2区間分が連結されて、単区間より多い点数になっていること
-      assert.ok(result.path.points.length > legPoints.length);
-    }
-  );
-
-  assert.equal(capturedBodies.length, 2, '始点=終点を避けるため2回に分けてリクエストするはず');
-
-  for (const body of capturedBodies) {
-    assert.notDeepEqual(
-      body.origin.location.latLng,
-      body.destination.location.latLng,
-      '1回のリクエストの中で始点と終点が同一座標になってはいけない（退化ルートの原因）'
-    );
-  }
-
-  // 1回目の終点と2回目の始点が一致し、輪として繋がっていること
-  assert.deepEqual(capturedBodies[0].destination.location.latLng, capturedBodies[1].origin.location.latLng);
-  // 1回目の始点と2回目の終点が、プリセットの始点（=終点）と一致すること
-  const start = { latitude: preset.points[0].lat, longitude: preset.points[0].lng };
-  assert.deepEqual(capturedBodies[0].origin.location.latLng, start);
-  assert.deepEqual(capturedBodies[1].destination.location.latLng, start);
-
-  setApiKey('');
-});
-
-test('routeFromPresetRefined: Routes API が失敗したら警告付きで概算ルートにフォールバックする', async () => {
-  setApiKey('TEST_KEY');
-  const preset = PRESET_ROUTES[1];
-  const fallback = routeFromPreset(preset);
-
-  await withMockFetch(
-    async () => ({ ok: false, status: 500, text: async () => 'server error' }),
-    async () => {
-      const result = await routeFromPresetRefined(preset);
-      assert.equal(result.path.totalDistanceM, fallback.path.totalDistanceM);
-      assert.ok(result.warning && result.warning.includes('取得できなかった'), result.warning);
-    }
-  );
+  assert.deepEqual(calledModes, ['BICYCLE', 'WALK']);
   setApiKey('');
 });
 

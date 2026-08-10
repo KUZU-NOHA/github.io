@@ -257,10 +257,10 @@ button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
 }
 
 .metric { display: flex; align-items: baseline; gap: .2rem; }
-.metric .value { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.metric .unit { font-size: .75rem; opacity: .75; }
-.metric-lg .value { font-size: 2.6rem; line-height: 1; }
-.metric-lg .unit { font-size: .9rem; }
+.metric .value { font-size: 1.55rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.metric .unit { font-size: .85rem; opacity: .75; }
+.metric-lg .value { font-size: 3.2rem; line-height: 1; }
+.metric-lg .unit { font-size: 1rem; }
 
 .note-inline { display: block; font-size: .65rem; opacity: .65; margin-left: .3rem; }
 

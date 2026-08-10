@@ -12,92 +12,63 @@ import { buildPath, decodePolyline, resample, parseGpx, smoothElevations } from 
 const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const ELEVATION_ENDPOINT = 'https://maps.googleapis.com/maps/api/elevation/json';
 
-/** 3D タイルのカバレッジが確実な地域のプリセットルート（要件定義書 F-104） */
+/**
+ * プリセットルート（要件定義書 F-104）。
+ *
+ * 座標は手作業の近似ではなく、Ride with GPS で実際に記録・計画された
+ * GPX ファイル（`app/routes/*.gpx`、実行時に fetch して読み込む）を使う。
+ * そのため API キーが無くても、常に実際の道路に沿った正確な経路になる。
+ */
 export const PRESET_ROUTES = [
   {
     id: 'imperial-palace',
     name: '皇居一周',
-    description: '東京・皇居外周のおよそ5km。定番の周回コース',
+    description: '東京・皇居外周を1周する定番コース（約5km）',
     city: '東京',
     loop: true,
-    points: [
-      { lat: 35.6852, lng: 139.7528 }, { lat: 35.6879, lng: 139.7546 },
-      { lat: 35.6907, lng: 139.7548 }, { lat: 35.6929, lng: 139.7529 },
-      { lat: 35.6941, lng: 139.7495 }, { lat: 35.6936, lng: 139.7458 },
-      { lat: 35.6913, lng: 139.7433 }, { lat: 35.6884, lng: 139.7425 },
-      { lat: 35.6854, lng: 139.7434 }, { lat: 35.6829, lng: 139.7455 },
-      { lat: 35.6816, lng: 139.7484 }, { lat: 35.6826, lng: 139.7513 },
-      { lat: 35.6852, lng: 139.7528 },
-    ],
+    gpxUrl: 'routes/imperial-palace.gpx',
   },
   {
     id: 'osaka-castle',
-    name: '大阪城公園',
-    description: '大阪城の堀に沿った約4kmの周回',
+    name: '大阪城天守閣＋標高0m',
+    description: '大阪城公園内、標高0m地点を含む約7.7km',
     city: '大阪',
-    loop: true,
-    points: [
-      { lat: 34.6873, lng: 135.5259 }, { lat: 34.6895, lng: 135.5281 },
-      { lat: 34.6908, lng: 135.5312 }, { lat: 34.6901, lng: 135.5345 },
-      { lat: 34.6878, lng: 135.5361 }, { lat: 34.6852, lng: 135.5353 },
-      { lat: 34.6835, lng: 135.5327 }, { lat: 34.6840, lng: 135.5292 },
-      { lat: 34.6856, lng: 135.5268 }, { lat: 34.6873, lng: 135.5259 },
-    ],
-  },
-  {
-    id: 'kamogawa',
-    name: '鴨川沿い',
-    description: '京都・鴨川に沿って北上する約6km',
-    city: '京都',
     loop: false,
-    points: [
-      { lat: 34.9971, lng: 135.7710 }, { lat: 35.0021, lng: 135.7715 },
-      { lat: 35.0075, lng: 135.7719 }, { lat: 35.0128, lng: 135.7722 },
-      { lat: 35.0182, lng: 135.7724 }, { lat: 35.0234, lng: 135.7729 },
-      { lat: 35.0289, lng: 135.7737 }, { lat: 35.0341, lng: 135.7751 },
-      { lat: 35.0396, lng: 135.7768 }, { lat: 35.0448, lng: 135.7784 },
-    ],
+    gpxUrl: 'routes/osaka-castle.gpx',
   },
   {
     id: 'golden-gate',
     name: 'ゴールデンゲートブリッジ',
-    description: 'サンフランシスコ湾を渡る約3km。3Dタイルの見応えが随一',
+    description: 'サンフランシスコ湾を渡るロングライド（約20km）',
     city: 'サンフランシスコ',
     loop: false,
-    points: [
-      { lat: 37.8065, lng: -122.4750 }, { lat: 37.8103, lng: -122.4763 },
-      { lat: 37.8150, lng: -122.4780 }, { lat: 37.8199, lng: -122.4785 },
-      { lat: 37.8249, lng: -122.4788 }, { lat: 37.8298, lng: -122.4791 },
-      { lat: 37.8341, lng: -122.4794 },
-    ],
+    gpxUrl: 'routes/golden-gate.gpx',
   },
   {
     id: 'seine',
-    name: 'セーヌ川沿い',
-    description: 'パリ中心部・セーヌ川右岸を走る約4km',
+    name: 'セーヌ川',
+    description: 'パリからセーヌ川沿いを河口方面へ走るロングルート（約287km）',
     city: 'パリ',
     loop: false,
-    points: [
-      { lat: 48.8530, lng: 2.3499 }, { lat: 48.8558, lng: 2.3435 },
-      { lat: 48.8582, lng: 2.3369 }, { lat: 48.8601, lng: 2.3288 },
-      { lat: 48.8617, lng: 2.3212 }, { lat: 48.8635, lng: 2.3135 },
-      { lat: 48.8646, lng: 2.3049 }, { lat: 48.8637, lng: 2.2967 },
-      { lat: 48.8611, lng: 2.2921 }, { lat: 48.8584, lng: 2.2945 },
-    ],
+    gpxUrl: 'routes/seine.gpx',
+  },
+  {
+    id: 'oga-peninsula',
+    name: '寒風山・男鹿半島',
+    description: '秋田・男鹿半島の寒風山を含む山岳ルート（約166km）',
+    city: '秋田',
+    loop: false,
+    gpxUrl: 'routes/oga-peninsula.gpx',
   },
 ];
 
 /**
- * Routes API で2地点間のルートを取得する。
+ * Routes API で2地点間のルートを取得する（地点を指定してのルート生成用）。
  * BICYCLE が使えない地域では WALK → DRIVE と自動的に切り替える。
- *
- * waypoints を渡すと、それらの地点を順番に経由するルートを生成する。
- * プリセットルートの概算座標を経由地点として渡し、実際の道路にスナップ
- * させる用途で使う（routeFromPresetRefined）。
  *
  * @returns {{path: object, mode: string, warning: string|null}}
  */
-export async function fetchRoute(origin, destination, waypoints = []) {
+export async function fetchRoute(origin, destination) {
   const key = getApiKey();
   if (!key) throw new Error('API キーが未設定です');
 
@@ -117,9 +88,6 @@ export async function fetchRoute(origin, destination, waypoints = []) {
         body: JSON.stringify({
           origin: { location: { latLng: toLatLng(origin) } },
           destination: { location: { latLng: toLatLng(destination) } },
-          ...(waypoints.length
-            ? { intermediates: waypoints.map((p) => ({ location: { latLng: toLatLng(p) } })) }
-            : {}),
           travelMode: mode,
           polylineQuality: 'HIGH_QUALITY',
           ...(mode === 'DRIVE' ? { routingPreference: 'TRAFFIC_UNAWARE' } : {}),
@@ -209,116 +177,35 @@ export function expandToPathPoints(values, targetLength) {
   return out;
 }
 
-/** プリセット定義から走行可能なルートを作る（座標をそのまま直線で結ぶ概算ルート） */
-export function routeFromPreset(preset) {
-  return {
-    path: buildPath(preset.points),
-    mode: 'PRESET',
-    warning: null,
-    loop: preset.loop,
-    name: preset.name,
-  };
-}
-
-/** Routes API の経由地点として渡す座標の上限（API 自体の上限は25地点、余裕を持たせる） */
-const MAX_PRESET_WAYPOINTS = 20;
-
-const PRESET_NO_KEY_WARNING =
-  'API キーが未設定のため、概算のルートで表示しています。実際の道路とズレる場合があります。';
-const PRESET_REFINE_FAILED_WARNING =
-  '実際の道路に沿ったルートを取得できなかったため、概算のルートで表示しています。実際の道路とズレる場合があります。';
-
 /**
- * プリセットの概算座標を Routes API の経由地点として渡し、実際の道路に
- * スナップさせたルートを作る。プリセット座標は手作業による粗い近似のため、
- * そのまま `routeFromPreset` で結ぶと建物や川を直線で突っ切ってしまう問題への対応。
+ * GPX テキストから走行可能なルートを作る（GPX インポート・プリセット共通処理）。
  *
- * API キーが無い場合や取得に失敗した場合は、警告付きで従来の概算ルート
- * （routeFromPreset）にフォールバックする。
+ * GPX に標高が含まれていれば Elevation API を呼ばずに済む。GPS由来の標高
+ * （特にバロメーターではなく衛星測位由来のもの）は数m単位でばらつくため、
+ * Elevation API 由来の標高と同様に平滑化する。
  */
-export async function routeFromPresetRefined(preset) {
-  if (!getApiKey()) return { ...routeFromPreset(preset), warning: PRESET_NO_KEY_WARNING };
-
-  try {
-    const refined = preset.loop
-      ? await fetchLoopRoute(preset.points)
-      : await fetchRoute(
-          preset.points[0],
-          preset.points[preset.points.length - 1],
-          thinWaypoints(preset.points.slice(1, -1), MAX_PRESET_WAYPOINTS)
-        );
-    return { ...refined, mode: 'PRESET', loop: preset.loop, name: preset.name };
-  } catch {
-    return { ...routeFromPreset(preset), warning: PRESET_REFINE_FAILED_WARNING };
-  }
-}
-
-/**
- * 始点=終点のループルートを Routes API で取得する。
- *
- * origin と destination に全く同じ座標を渡すと、ルーティングエンジンが
- * 経由地点を無視した退化した結果（皇居一周が皇居内を突っ切る等）を返す
- * ことがある。始点の反対側にあたる点でループを2区間に分割し、区間ごとに
- * 別の座標を始点・終点として取得してから連結することでこれを避ける。
- */
-async function fetchLoopRoute(points) {
-  const middle = points.slice(1, -1);
-  // 分割できるだけの中間点が無いループは、始点=終点の退化リクエストになるため諦める
-  // （呼び出し元 routeFromPresetRefined が概算ルートへフォールバックする）
-  if (middle.length === 0) throw new Error('ループを分割できる中間点がありません');
-
-  const splitIndex = Math.floor(middle.length / 2);
-  const farSide = middle[splitIndex];
-  const halfMax = Math.max(1, Math.floor(MAX_PRESET_WAYPOINTS / 2));
-  const outboundWaypoints = thinWaypoints(middle.slice(0, splitIndex), halfMax);
-  const inboundWaypoints = thinWaypoints(middle.slice(splitIndex + 1), halfMax);
-
-  const [outbound, inbound] = await Promise.all([
-    fetchRoute(points[0], farSide, outboundWaypoints),
-    fetchRoute(farSide, points[0], inboundWaypoints),
-  ]);
-
-  // 片方の区間だけ自転車ルートが無く自動車にフォールバックしている場合があるため、
-  // より制限の強い（＝警告すべき）側の結果を代表として使う
-  const travelModes = ['BICYCLE', 'WALK', 'DRIVE'];
-  const weaker = travelModes.indexOf(outbound.mode) >= travelModes.indexOf(inbound.mode) ? outbound : inbound;
-
-  return {
-    path: buildPath([...outbound.path.points, ...inbound.path.points]),
-    mode: weaker.mode,
-    warning: weaker.warning,
-  };
-}
-
-/** 経由地点の配列を max 個以下になるよう均等に間引く */
-export function thinWaypoints(points, max) {
-  if (points.length <= max) return points;
-  const step = points.length / max;
-  const out = [];
-  for (let i = 0; i < max; i++) out.push(points[Math.floor(i * step)]);
-  return out;
-}
-
-/** GPX ファイル（File オブジェクト）からルートを作る */
-export async function routeFromGpxFile(file) {
-  const text = await file.text();
+function buildGpxRoute(text, { name, loop = false }) {
   const points = parseGpx(text);
   const path = buildPath(points);
 
-  // GPX に標高が含まれていれば Elevation API を呼ばずに済む。
-  // GPS由来の標高（特にバロメーターではなく衛星測位由来のもの）は
-  // 数m単位でばらつくため、Elevation API と同様に平滑化する
   const hasEle = points.every((p) => Number.isFinite(p.ele));
   const elevations = hasEle
     ? expandToPathPoints(smoothElevations(points.map((p) => p.ele)), path.points.length)
     : [];
 
-  return {
-    path,
-    elevations,
-    mode: 'GPX',
-    warning: null,
-    loop: false,
-    name: file.name.replace(/\.gpx$/i, ''),
-  };
+  return { path, elevations, mode: 'GPX', warning: null, loop, name };
+}
+
+/** GPX ファイル（File オブジェクト）からルートを作る */
+export async function routeFromGpxFile(file) {
+  const text = await file.text();
+  return buildGpxRoute(text, { name: file.name.replace(/\.gpx$/i, '') });
+}
+
+/** プリセットに同梱された GPX ファイルを取得してルートを作る */
+export async function routeFromPresetGpx(preset) {
+  const res = await fetch(preset.gpxUrl);
+  if (!res.ok) throw new Error(`プリセットの GPX を読み込めませんでした（${preset.name}）`);
+  const text = await res.text();
+  return buildGpxRoute(text, { name: preset.name, loop: preset.loop });
 }

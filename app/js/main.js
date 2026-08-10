@@ -11,7 +11,7 @@ import {
 } from './config.js';
 import { buildPath } from './map/geo.js';
 import {
-  PRESET_ROUTES, fetchRoute, fetchElevations, routeFromPresetRefined, routeFromGpxFile,
+  PRESET_ROUTES, fetchRoute, fetchElevations, routeFromPresetGpx, routeFromGpxFile,
 } from './map/route.js';
 import { View3D } from './map/view3d.js';
 import { Fallback2D } from './map/fallback2d.js';
@@ -226,7 +226,7 @@ function renderPresets() {
       const preset = PRESET_ROUTES.find((p) => p.id === btn.dataset.preset);
       setRouteBusy(true);
       try {
-        await selectRoute(await routeFromPresetRefined(preset));
+        await selectRoute(await routeFromPresetGpx(preset));
       } catch (err) {
         toast(err.message, 'error');
       } finally {
