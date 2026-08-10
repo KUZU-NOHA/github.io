@@ -62,8 +62,9 @@ export function buildSimModeCommand(weightKg = 80, crr = 0.004, cwr = 0.51) {
  */
 export function buildSimGradeCommand(gradePercent) {
   // 実在しない急勾配を送らないよう安全側に丸める。
-  // 想定外の値で負荷が跳ね上がるのを防ぐため、ここでも二重に制限する。
-  const clamped = Math.max(-25, Math.min(25, gradePercent));
+  // 想定外の値で負荷が跳ね上がるのを防ぐため、gradeAt() の ±15% 制限と
+  // 合わせてここでも二重に制限する。
+  const clamped = Math.max(-15, Math.min(15, gradePercent));
   const fraction = clamped / 100;
   return new Uint8Array([
     OP_SET_SIM_GRADE,

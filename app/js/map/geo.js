@@ -181,33 +181,51 @@ export function gradeAt(path, elevations, distanceM, windowM = 40) {
   if (run < 1) return 0;
   const rise = elevationAt(path, elevations, fwd) - elevationAt(path, elevations, back);
   const grade = (rise / run) * 100;
-  // 実在しない急勾配は測定ノイズなので丸める
-  return Math.max(-25, Math.min(25, grade));
+  // 実在しない急勾配は測定ノイズなので丸める。GPS標高は都心部の建物・
+  // 樹木等の影響で数百m単位のまとまった誤差が乗ることがあり、平滑化
+  // だけでは吸収しきれない（smoothElevationsByDistance 参照）ため、
+  // 最終防波堤として ±15% に制限する。日本の実在する激坂道路と同程度の
+  // 上限であり、実在の山岳ルートの傾斜は大きく損なわない
+  return Math.max(-15, Math.min(15, grade));
 }
 
 /**
- * 標高配列を移動平均で平滑化する。
+ * 緯度経度付きの標高点列を、実距離ベースの移動平均で平滑化する。
  *
  * Elevation API や GPX の標高データには数十cm〜数m単位のノイズが乗る。
  * これをそのまま gradeAt() に使うと、実際には平坦な区間でも
  * データのブレだけで勾配が細かく暴れ、トレーナーの負荷がガタつく。
- * windowPoints 個の移動平均でならしてから使う。
  *
- * @param {number[]} elevations
- * @param {number} windowPoints ならす点数（奇数推奨）
+ * 点数ベースの窓ではなく実距離 windowM 分の点を集めて平均するのは、
+ * GPX の記録点間隔が低速時・旋回時に密集し高速直進時に疎になるなど
+ * 大きく不均一なため。点数ベースだと、密集区間では窓が実質数mしか
+ * カバーせずノイズを除去できない一方、疎な区間では逆に窓が広くなり
+ * すぎてしまう。実距離ベースなら記録密度に関わらず一定の距離スケール
+ * でならせる。
+ *
+ * @param {{lat:number, lng:number, ele:number}[]} points
+ * @param {number} windowM ならす範囲の合計距離[m]（前後合わせて）
  */
-export function smoothElevations(elevations, windowPoints = 5) {
-  if (!elevations || elevations.length < 3) {
-    return elevations ? elevations.slice() : [];
+export function smoothElevationsByDistance(points, windowM = 200) {
+  if (!points || points.length < 3) return (points || []).map((p) => p.ele);
+
+  const cumulative = [0];
+  for (let i = 1; i < points.length; i++) {
+    cumulative[i] = cumulative[i - 1] + haversine(points[i - 1], points[i]);
   }
-  const half = Math.floor(windowPoints / 2);
-  return elevations.map((_, i) => {
-    const lo = Math.max(0, i - half);
-    const hi = Math.min(elevations.length - 1, i + half);
+
+  const half = windowM / 2;
+  const out = new Array(points.length);
+  let lo = 0;
+  let hi = 0;
+  for (let i = 0; i < points.length; i++) {
+    while (lo < i && cumulative[i] - cumulative[lo] > half) lo++;
+    while (hi < points.length - 1 && cumulative[hi + 1] - cumulative[i] <= half) hi++;
     let sum = 0;
-    for (let j = lo; j <= hi; j++) sum += elevations[j];
-    return sum / (hi - lo + 1);
-  });
+    for (let j = lo; j <= hi; j++) sum += points[j].ele;
+    out[i] = sum / (hi - lo + 1);
+  }
+  return out;
 }
 
 /**

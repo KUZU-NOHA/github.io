@@ -7,7 +7,9 @@
  */
 
 import { getApiKey } from '../config.js';
-import { buildPath, decodePolyline, resample, parseGpx, smoothElevations } from './geo.js';
+import {
+  buildPath, decodePolyline, resample, parseGpx, smoothElevationsByDistance,
+} from './geo.js';
 
 const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const ELEVATION_ENDPOINT = 'https://maps.googleapis.com/maps/api/elevation/json';
@@ -151,10 +153,10 @@ export async function fetchElevations(path, samples = 300) {
     const json = await res.json();
     if (json.status !== 'OK' || !Array.isArray(json.results)) return [];
 
-    const sampledElevations = json.results.map((r) => r.elevation);
     // Elevation API の実測値には数十cm〜数m単位のノイズが乗るため、
     // 全点へ伸ばす前に平滑化しておく（勾配連動の精度に直結する）
-    const smoothed = smoothElevations(sampledElevations);
+    const sampledWithEle = sampled.map((p, i) => ({ ...p, ele: json.results[i].elevation }));
+    const smoothed = smoothElevationsByDistance(sampledWithEle);
     // 間引いた標高を、経路の全点数に線形補間で戻す
     return expandToPathPoints(smoothed, path.points.length);
   } catch {
@@ -181,8 +183,11 @@ export function expandToPathPoints(values, targetLength) {
  * GPX テキストから走行可能なルートを作る（GPX インポート・プリセット共通処理）。
  *
  * GPX に標高が含まれていれば Elevation API を呼ばずに済む。GPS由来の標高
- * （特にバロメーターではなく衛星測位由来のもの）は数m単位でばらつくため、
- * Elevation API 由来の標高と同様に平滑化する。
+ * （特にバロメーターではなく衛星測位由来のもの）には数m単位のノイズに加え、
+ * 建物や樹木の影響で数百m単位のまとまった誤差が乗ることがあるため、
+ * 実距離ベースで平滑化する（smoothElevationsByDistance）。GPX の記録点
+ * 間隔は低速時や旋回時に密集し高速時に疎になるなど不均一なので、点数
+ * ベースの平滑化では密度によって効き目が変わってしまう。
  */
 function buildGpxRoute(text, { name, loop = false }) {
   const points = parseGpx(text);
@@ -190,7 +195,7 @@ function buildGpxRoute(text, { name, loop = false }) {
 
   const hasEle = points.every((p) => Number.isFinite(p.ele));
   const elevations = hasEle
-    ? expandToPathPoints(smoothElevations(points.map((p) => p.ele)), path.points.length)
+    ? expandToPathPoints(smoothElevationsByDistance(points), path.points.length)
     : [];
 
   return { path, elevations, mode: 'GPX', warning: null, loop, name };

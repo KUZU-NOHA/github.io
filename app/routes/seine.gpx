@@ -2,10 +2,6 @@
 <gpx xmlns:gpxdata="http://www.cluetrust.com/XML/GPXDATA/1/0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="http://ridewithgps.com/" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.cluetrust.com/XML/GPXDATA/1/0 http://www.cluetrust.com/Schemas/gpxdata10.xsd">
   <metadata>
     <name>セーヌ川</name>
-    <link href="https://ridewithgps.com/routes/7696886">
-      <text>セーヌ川</text>
-    </link>
-    <time>2015-05-01T07:49:44Z</time>
   </metadata>
   <trk>
     <name>セーヌ川</name>

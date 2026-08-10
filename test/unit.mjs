@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 
 import {
   haversine, bearing, decodePolyline, buildPath, pointAt,
-  elevationAt, gradeAt, resample, lerpAngle, normalizeAngle, smoothElevations,
+  elevationAt, gradeAt, resample, lerpAngle, normalizeAngle, smoothElevationsByDistance,
 } from '../app/js/map/geo.js';
 import {
   parseIndoorBikeData, buildSimulationCommand, parseFeatureFlags,
@@ -131,53 +131,66 @@ test('gradeAt: 標高データが無ければ 0 を返す（走行は継続で�
   assert.equal(gradeAt(path, null, 100), 0);
 });
 
-test('gradeAt: 非現実的な急勾配は ±25% に丸める', () => {
+test('gradeAt: 非現実的な急勾配は ±15% に丸める', () => {
   const path = buildPath([{ lat: 35, lng: 139 }, { lat: 35.0002, lng: 139 }]);
   const g = gradeAt(path, [0, 1000], 10);
-  assert.ok(g <= 25 && g >= -25, `実際: ${g}`);
+  assert.ok(g <= 15 && g >= -15, `実際: ${g}`);
 });
 
-test('smoothElevations: 単発のノイズを均す', () => {
-  // 平坦な地形の途中に1点だけ大きな外れ値が混ざったケース
-  const raw = [100, 100, 100, 130, 100, 100, 100];
-  const smoothed = smoothElevations(raw, 5);
+test('smoothElevationsByDistance: 単発のノイズを均す', () => {
+  // 約111mおきに並ぶ平坦な地形の途中に1点だけ大きな外れ値が混ざったケース
+  const points = [0, 1, 2, 3, 4, 5, 6].map((i) => ({
+    lat: 35 + i * 0.001, lng: 139, ele: i === 3 ? 130 : 100,
+  }));
+  const smoothed = smoothElevationsByDistance(points, 400);
   assert.ok(smoothed[3] < 115, `外れ値が均されていない: ${smoothed[3]}`);
   // 端に近い点も配列外参照せず計算できること
   assert.ok(Number.isFinite(smoothed[0]));
   assert.ok(Number.isFinite(smoothed[6]));
 });
 
-test('smoothElevations: 一定勾配の地形は形を保つ（過剰に均さない）', () => {
-  // 0m〜60mへ均等に上る地形。移動平均でも傾き自体は保たれるべき
-  const raw = [0, 10, 20, 30, 40, 50, 60];
-  const smoothed = smoothElevations(raw, 3);
-  for (let i = 1; i < smoothed.length; i++) {
-    assert.ok(smoothed[i] > smoothed[i - 1], `単調増加が崩れた: ${smoothed}`);
-  }
-  // 中央付近の値は元の値に近いはず（一定勾配なので移動平均でもほぼ不変）
-  assert.ok(Math.abs(smoothed[3] - 30) < 1, `実際: ${smoothed[3]}`);
+test('smoothElevationsByDistance: 記録密度が不均一でも実距離の窓でならす', () => {
+  // GPX は低速時・旋回時に記録点が密集し、高速時は疎になる。
+  // 序盤は密（約11mおき）に記録され、その中に1点だけ外れ値が混ざっている。
+  // 後半は疎（約555mおき）に記録された平坦な区間
+  const dense = Array.from({ length: 8 }, (_, i) => ({
+    lat: 35 + i * 0.0001, lng: 139, ele: i === 4 ? 130 : 100,
+  }));
+  const sparse = Array.from({ length: 4 }, (_, i) => ({
+    lat: 35 + 0.0007 + (i + 1) * 0.005, lng: 139, ele: 100,
+  }));
+  const points = [...dense, ...sparse];
+  const smoothed = smoothElevationsByDistance(points, 300);
+  // 密な区間の外れ値は、実距離300mの窓に密集した近傍点が多く入るためよく均される
+  assert.ok(smoothed[4] < 110, `密な区間の外れ値が均されていない: ${smoothed[4]}`);
+  // 疎な区間はノイズが無いので、遠く離れた密な区間に値を引っ張られず元の値のまま
+  assert.ok(Math.abs(smoothed[smoothed.length - 1] - 100) < 5,
+    `疎な区間の値が変わってしまった: ${smoothed[smoothed.length - 1]}`);
 });
 
-test('smoothElevations: 点数が少なければそのまま返す', () => {
-  assert.deepEqual(smoothElevations([1, 2]), [1, 2]);
-  assert.deepEqual(smoothElevations([]), []);
-  assert.deepEqual(smoothElevations(null), []);
+test('smoothElevationsByDistance: 点数が少なければそのまま標高だけ返す', () => {
+  const points = [{ lat: 35, lng: 139, ele: 1 }, { lat: 35.001, lng: 139, ele: 2 }];
+  assert.deepEqual(smoothElevationsByDistance(points), [1, 2]);
+  assert.deepEqual(smoothElevationsByDistance([]), []);
+  assert.deepEqual(smoothElevationsByDistance(null), []);
 });
 
-test('smoothElevations: 元の配列を破壊しない', () => {
-  const raw = [10, 50, 10, 50, 10];
-  const copy = raw.slice();
-  smoothElevations(raw);
-  assert.deepEqual(raw, copy);
+test('smoothElevationsByDistance: 元の配列を破壊しない', () => {
+  const points = [0, 1, 2, 3, 4].map((i) => ({
+    lat: 35 + i * 0.001, lng: 139, ele: i % 2 === 0 ? 10 : 50,
+  }));
+  const copy = points.map((p) => ({ ...p }));
+  smoothElevationsByDistance(points);
+  assert.deepEqual(points, copy);
 });
 
 test('gradeAt: 平滑化した標高を使うとノイズ由来の急勾配が緩和される', () => {
   // 6mごとの点に1点だけ+5mのノイズが混ざったほぼ平坦な地形（1.2km）
-  const path = buildPath(
-    Array.from({ length: 11 }, (_, i) => ({ lat: 35 + i * 0.001, lng: 139 }))
-  );
+  const latLngs = Array.from({ length: 11 }, (_, i) => ({ lat: 35 + i * 0.001, lng: 139 }));
+  const path = buildPath(latLngs);
   const noisy = [0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0]; // 中央に外れ値
-  const smoothed = smoothElevations(noisy, 3);
+  const points = latLngs.map((p, i) => ({ ...p, ele: noisy[i] }));
+  const smoothed = smoothElevationsByDistance(points, 300);
 
   const midDistance = path.totalDistanceM / 2;
   const gradeNoisy = Math.abs(gradeAt(path, noisy, midDistance));
@@ -593,11 +606,11 @@ test('Wahoo: 上り勾配は中央値より大きく、下りは小さくなる'
   assert.equal(v(climb), 34406);
 });
 
-test('Wahoo: 安全のため勾配を ±25% に丸める', () => {
+test('Wahoo: 安全のため勾配を ±15% に丸める', () => {
   const v = (c) => c[1] | (c[2] << 8);
   // 想定外の値が来ても負荷が跳ね上がらないこと
-  assert.equal(v(buildSimGradeCommand(999)), v(buildSimGradeCommand(25)));
-  assert.equal(v(buildSimGradeCommand(-999)), v(buildSimGradeCommand(-25)));
+  assert.equal(v(buildSimGradeCommand(999)), v(buildSimGradeCommand(15)));
+  assert.equal(v(buildSimGradeCommand(-999)), v(buildSimGradeCommand(-15)));
 });
 
 test('Wahoo: SIM モードの前提条件をエンコードする', () => {
