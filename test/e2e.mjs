@@ -515,14 +515,16 @@ try {
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK","results":[]}' })
   );
 
-  // プリセット（皇居一周）の実座標とは明確に異なる、往復10.25kmのダミー経路。
-  // 表示された距離がこの値になっていれば、モック応答へ実際に差し替わった証拠になる
+  // プリセット（皇居一周）の実座標とは明確に異なる、片道5.12km相当のダミー経路。
+  // 皇居一周は始点=終点のループなので2区間に分けてリクエストされ（fetchLoopRoute）、
+  // 同じダミー経路が2回連結されて表示距離は往復分の 20.50km になる。
+  // この距離が表示されていれば、モック応答へ実際に差し替わった証拠になる
   let routesApiRequests = [];
   await rpPage.route('**/routes.googleapis.com/**', (route) => {
     routesApiRequests.push(JSON.parse(route.request().postData()));
     route.fulfill(mockRoutesApiFulfill(
       [{ lat: 35.6852, lng: 139.7528 }, { lat: 35.7200, lng: 139.7900 }, { lat: 35.6852, lng: 139.7528 }],
-      10248
+      5124
     ));
   });
 
@@ -535,13 +537,20 @@ try {
   await rpPage.click('[data-preset="imperial-palace"]');
   await rpPage.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
 
-  check('プリセット選択で Routes API が経由地点付きで呼ばれる',
-    routesApiRequests.length === 1 && routesApiRequests[0].intermediates?.length > 0,
-    `呼び出し ${routesApiRequests.length} 回 / intermediates ${routesApiRequests[0]?.intermediates?.length ?? 0} 件`);
+  check('ループのプリセットは起点=終点を避けて2区間に分けてリクエストする',
+    routesApiRequests.length === 2 && routesApiRequests.every((b) => b.intermediates?.length > 0),
+    `呼び出し ${routesApiRequests.length} 回`);
+
+  check('各リクエストの始点と終点が同一座標にならない（退化ルートの原因だった不具合の再発防止）',
+    routesApiRequests.every((b) =>
+      b.origin.location.latLng.latitude !== b.destination.location.latLng.latitude
+      || b.origin.location.latLng.longitude !== b.destination.location.latLng.longitude
+    ),
+    JSON.stringify(routesApiRequests.map((b) => [b.origin.location.latLng, b.destination.location.latLng])));
 
   const rpSummary = await rpPage.locator('#route-summary').innerText();
-  check('道路スナップ後のルートに実際に差し替わる（モック応答の距離が表示される）',
-    rpSummary.includes('10.25 km'), rpSummary.replace(/\n/g, ' / '));
+  check('道路スナップ後のルートに実際に差し替わる（モック応答2区間分の距離が表示される）',
+    rpSummary.includes('20.50 km'), rpSummary.replace(/\n/g, ' / '));
 
   /* ---- API キーが無い場合は Routes API を呼ばずフォールバックする ---- */
   await rpPage.evaluate(() => localStorage.removeItem('vcycling.apiKey'));

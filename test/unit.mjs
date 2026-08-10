@@ -337,15 +337,20 @@ test('routeFromPresetRefined: API キーが無ければ概算プリセットに�
   assert.ok(result.warning && result.warning.includes('API キー'), result.warning);
 });
 
-test('routeFromPresetRefined: API キーがあれば経由地点付きで Routes API から取得する', async () => {
+test('routeFromPresetRefined: 非ループのプリセットは1回のリクエストで経由地点付きに取得する', async () => {
   setApiKey('TEST_KEY');
-  const preset = PRESET_ROUTES[0]; // 皇居一周（loop, 13点）
-  const refinedPoints = [preset.points[0], { lat: 35.69, lng: 139.75 }, preset.points[preset.points.length - 1]];
-  let capturedBody = null;
+  const preset = PRESET_ROUTES.find((p) => !p.loop); // 鴨川沿い等（loop: false）
+  const presetEnd = preset.points[preset.points.length - 1];
+  const refinedPoints = [
+    preset.points[0],
+    { lat: (preset.points[0].lat + presetEnd.lat) / 2, lng: (preset.points[0].lng + presetEnd.lng) / 2 },
+    presetEnd,
+  ];
+  let capturedBodies = [];
 
   await withMockFetch(
     async (url, init) => {
-      capturedBody = JSON.parse(init.body);
+      capturedBodies.push(JSON.parse(init.body));
       return {
         ok: true,
         json: async () => ({ routes: [{ polyline: { encodedPolyline: encodePolyline(refinedPoints) } }] }),
@@ -361,15 +366,62 @@ test('routeFromPresetRefined: API キーがあれば経由地点付きで Routes
     }
   );
 
-  assert.ok(capturedBody, 'fetch が呼ばれていない');
-  assert.deepEqual(capturedBody.origin.location.latLng, {
+  assert.equal(capturedBodies.length, 1, 'ループでないプリセットは1回のリクエストで済むはず');
+  const body = capturedBodies[0];
+  assert.deepEqual(body.origin.location.latLng, {
     latitude: preset.points[0].lat, longitude: preset.points[0].lng,
   });
-  assert.deepEqual(capturedBody.destination.location.latLng, {
+  assert.deepEqual(body.destination.location.latLng, {
     latitude: preset.points[preset.points.length - 1].lat,
     longitude: preset.points[preset.points.length - 1].lng,
   });
-  assert.equal(capturedBody.intermediates.length, preset.points.length - 2);
+  assert.equal(body.intermediates.length, preset.points.length - 2);
+  setApiKey('');
+});
+
+test('routeFromPresetRefined: ループのプリセットは起点=終点を避けて2区間に分けて取得する', async () => {
+  // 皇居一周のようなループ（始点=終点）を Routes API に1回のリクエストでそのまま
+  // 投げると、origin と destination が完全に同一座標になり、ルーティングエンジンが
+  // 経由地点を無視した退化ルート（施設の中を突っ切る等）を返すことがあった。
+  // 「2区間に分けてリクエストし、各リクエストでは起点≠終点にする」ことを検証する。
+  setApiKey('TEST_KEY');
+  const preset = PRESET_ROUTES.find((p) => p.loop); // 皇居一周
+  const legPoints = [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }]; // モック応答の中身は形状を問わない
+  const capturedBodies = [];
+
+  await withMockFetch(
+    async (url, init) => {
+      capturedBodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        json: async () => ({ routes: [{ polyline: { encodedPolyline: encodePolyline(legPoints) } }] }),
+      };
+    },
+    async () => {
+      const result = await routeFromPresetRefined(preset);
+      assert.equal(result.loop, true);
+      // 2区間分が連結されて、単区間より多い点数になっていること
+      assert.ok(result.path.points.length > legPoints.length);
+    }
+  );
+
+  assert.equal(capturedBodies.length, 2, '始点=終点を避けるため2回に分けてリクエストするはず');
+
+  for (const body of capturedBodies) {
+    assert.notDeepEqual(
+      body.origin.location.latLng,
+      body.destination.location.latLng,
+      '1回のリクエストの中で始点と終点が同一座標になってはいけない（退化ルートの原因）'
+    );
+  }
+
+  // 1回目の終点と2回目の始点が一致し、輪として繋がっていること
+  assert.deepEqual(capturedBodies[0].destination.location.latLng, capturedBodies[1].origin.location.latLng);
+  // 1回目の始点と2回目の終点が、プリセットの始点（=終点）と一致すること
+  const start = { latitude: preset.points[0].lat, longitude: preset.points[0].lng };
+  assert.deepEqual(capturedBodies[0].origin.location.latLng, start);
+  assert.deepEqual(capturedBodies[1].destination.location.latLng, start);
+
   setApiKey('');
 });
 

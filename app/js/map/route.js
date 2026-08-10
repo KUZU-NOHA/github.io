@@ -239,17 +239,55 @@ const PRESET_REFINE_FAILED_WARNING =
 export async function routeFromPresetRefined(preset) {
   if (!getApiKey()) return { ...routeFromPreset(preset), warning: PRESET_NO_KEY_WARNING };
 
-  const points = preset.points;
-  const origin = points[0];
-  const destination = points[points.length - 1];
-  const waypoints = thinWaypoints(points.slice(1, -1), MAX_PRESET_WAYPOINTS);
-
   try {
-    const refined = await fetchRoute(origin, destination, waypoints);
+    const refined = preset.loop
+      ? await fetchLoopRoute(preset.points)
+      : await fetchRoute(
+          preset.points[0],
+          preset.points[preset.points.length - 1],
+          thinWaypoints(preset.points.slice(1, -1), MAX_PRESET_WAYPOINTS)
+        );
     return { ...refined, mode: 'PRESET', loop: preset.loop, name: preset.name };
   } catch {
     return { ...routeFromPreset(preset), warning: PRESET_REFINE_FAILED_WARNING };
   }
+}
+
+/**
+ * 始点=終点のループルートを Routes API で取得する。
+ *
+ * origin と destination に全く同じ座標を渡すと、ルーティングエンジンが
+ * 経由地点を無視した退化した結果（皇居一周が皇居内を突っ切る等）を返す
+ * ことがある。始点の反対側にあたる点でループを2区間に分割し、区間ごとに
+ * 別の座標を始点・終点として取得してから連結することでこれを避ける。
+ */
+async function fetchLoopRoute(points) {
+  const middle = points.slice(1, -1);
+  // 分割できるだけの中間点が無いループは、始点=終点の退化リクエストになるため諦める
+  // （呼び出し元 routeFromPresetRefined が概算ルートへフォールバックする）
+  if (middle.length === 0) throw new Error('ループを分割できる中間点がありません');
+
+  const splitIndex = Math.floor(middle.length / 2);
+  const farSide = middle[splitIndex];
+  const halfMax = Math.max(1, Math.floor(MAX_PRESET_WAYPOINTS / 2));
+  const outboundWaypoints = thinWaypoints(middle.slice(0, splitIndex), halfMax);
+  const inboundWaypoints = thinWaypoints(middle.slice(splitIndex + 1), halfMax);
+
+  const [outbound, inbound] = await Promise.all([
+    fetchRoute(points[0], farSide, outboundWaypoints),
+    fetchRoute(farSide, points[0], inboundWaypoints),
+  ]);
+
+  // 片方の区間だけ自転車ルートが無く自動車にフォールバックしている場合があるため、
+  // より制限の強い（＝警告すべき）側の結果を代表として使う
+  const travelModes = ['BICYCLE', 'WALK', 'DRIVE'];
+  const weaker = travelModes.indexOf(outbound.mode) >= travelModes.indexOf(inbound.mode) ? outbound : inbound;
+
+  return {
+    path: buildPath([...outbound.path.points, ...inbound.path.points]),
+    mode: weaker.mode,
+    warning: weaker.warning,
+  };
 }
 
 /** 経由地点の配列を max 個以下になるよう均等に間引く */
