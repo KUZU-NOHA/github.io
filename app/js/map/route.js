@@ -24,10 +24,10 @@ const ELEVATION_ENDPOINT = 'https://maps.googleapis.com/maps/api/elevation/json'
 export const PRESET_ROUTES = [
   {
     id: 'imperial-palace',
-    name: '皇居一周',
-    description: '東京・皇居外周を1周する定番コース（約5km）',
+    name: '皇居・東京タワー',
+    description: '皇居から東京タワー方面へ走るコース（約9.7km）',
     city: '東京',
-    loop: true,
+    loop: false,
     gpxUrl: 'routes/imperial-palace.gpx',
   },
   {

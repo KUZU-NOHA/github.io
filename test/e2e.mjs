@@ -121,7 +121,6 @@ try {
   check('2D フォールバックが描画される',
     await page.locator('#map-stage canvas').count() > 0);
 
-  // 3秒走らせて数値が増えることを確認する
   const read = async () => ({
     distance: parseFloat(await page.locator('[data-hud="distance"]').innerText()),
     kcal: parseFloat(await page.locator('[data-hud="kcal"]').innerText()),
@@ -129,15 +128,23 @@ try {
     speed: parseFloat(await page.locator('[data-hud="speed"]').innerText()),
     power: parseFloat(await page.locator('[data-hud="power"]').innerText()),
   });
+  // プリセットの始点の勾配次第では（登り坂スタートだと減速するため）距離が
+  // 小数点2桁に乗るまでの時間が大きく変わる。固定秒数のスリープではなく、
+  // 実際に閾値を超えるまで待つことでどの勾配でも安定させる
+  const waitForDistanceAbove = (km) => page.waitForFunction(
+    (threshold) => parseFloat(document.querySelector('[data-hud="distance"]').innerText) > threshold,
+    km,
+    { timeout: 20000 }
+  );
 
-  await page.waitForTimeout(3000);
+  await waitForDistanceAbove(0);
   const a = await read();
   check('速度が発生する', a.speed > 0, `${a.speed} km/h`);
   check('パワーが発生する', a.power > 0, `${a.power} W`);
   check('距離が増える', a.distance > 0, `${a.distance} km`);
   check('経過時間が進む', a.time !== '00:00', a.time);
 
-  await page.waitForTimeout(2500);
+  await waitForDistanceAbove(a.distance);
   const b = await read();
   check('走行を続けると距離がさらに増える', b.distance > a.distance,
     `${a.distance} → ${b.distance} km`);
@@ -245,7 +252,7 @@ try {
   /* ---- 2回目の走行（状態のリセット漏れを検出する） ---- */
   await page.click('[data-nav="ride"]');
   await page.click('#ride-start');
-  await page.waitForTimeout(2500);
+  await waitForDistanceAbove(0);
   const second = await read();
   check('2回目の走行が開始できる', second.distance > 0, `${second.distance} km`);
   check('2回目でも経過時間が進む', second.time !== '00:00', second.time);
@@ -483,7 +490,7 @@ try {
 
   const rpSummary = await rpPage.locator('#route-summary').innerText();
   check('Google API 遮断下でも GPX 同梱プリセットが正確な距離で読み込める',
-    rpSummary.includes('5.01 km'), rpSummary.replace(/\n/g, ' / '));
+    rpSummary.includes('9.69 km'), rpSummary.replace(/\n/g, ' / '));
   check('GPX 埋め込みの標高データにより獲得標高が表示される（Elevation API 不使用）',
     rpSummary.includes('獲得標高'), rpSummary.replace(/\n/g, ' / '));
 
