@@ -91,9 +91,13 @@ export const PRESET_ROUTES = [
  * Routes API で2地点間のルートを取得する。
  * BICYCLE が使えない地域では WALK → DRIVE と自動的に切り替える。
  *
+ * waypoints を渡すと、それらの地点を順番に経由するルートを生成する。
+ * プリセットルートの概算座標を経由地点として渡し、実際の道路にスナップ
+ * させる用途で使う（routeFromPresetRefined）。
+ *
  * @returns {{path: object, mode: string, warning: string|null}}
  */
-export async function fetchRoute(origin, destination) {
+export async function fetchRoute(origin, destination, waypoints = []) {
   const key = getApiKey();
   if (!key) throw new Error('API キーが未設定です');
 
@@ -113,6 +117,9 @@ export async function fetchRoute(origin, destination) {
         body: JSON.stringify({
           origin: { location: { latLng: toLatLng(origin) } },
           destination: { location: { latLng: toLatLng(destination) } },
+          ...(waypoints.length
+            ? { intermediates: waypoints.map((p) => ({ location: { latLng: toLatLng(p) } })) }
+            : {}),
           travelMode: mode,
           polylineQuality: 'HIGH_QUALITY',
           ...(mode === 'DRIVE' ? { routingPreference: 'TRAFFIC_UNAWARE' } : {}),
@@ -202,7 +209,7 @@ export function expandToPathPoints(values, targetLength) {
   return out;
 }
 
-/** プリセット定義から走行可能なルートを作る */
+/** プリセット定義から走行可能なルートを作る（座標をそのまま直線で結ぶ概算ルート） */
 export function routeFromPreset(preset) {
   return {
     path: buildPath(preset.points),
@@ -211,6 +218,47 @@ export function routeFromPreset(preset) {
     loop: preset.loop,
     name: preset.name,
   };
+}
+
+/** Routes API の経由地点として渡す座標の上限（API 自体の上限は25地点、余裕を持たせる） */
+const MAX_PRESET_WAYPOINTS = 20;
+
+const PRESET_NO_KEY_WARNING =
+  'API キーが未設定のため、概算のルートで表示しています。実際の道路とズレる場合があります。';
+const PRESET_REFINE_FAILED_WARNING =
+  '実際の道路に沿ったルートを取得できなかったため、概算のルートで表示しています。実際の道路とズレる場合があります。';
+
+/**
+ * プリセットの概算座標を Routes API の経由地点として渡し、実際の道路に
+ * スナップさせたルートを作る。プリセット座標は手作業による粗い近似のため、
+ * そのまま `routeFromPreset` で結ぶと建物や川を直線で突っ切ってしまう問題への対応。
+ *
+ * API キーが無い場合や取得に失敗した場合は、警告付きで従来の概算ルート
+ * （routeFromPreset）にフォールバックする。
+ */
+export async function routeFromPresetRefined(preset) {
+  if (!getApiKey()) return { ...routeFromPreset(preset), warning: PRESET_NO_KEY_WARNING };
+
+  const points = preset.points;
+  const origin = points[0];
+  const destination = points[points.length - 1];
+  const waypoints = thinWaypoints(points.slice(1, -1), MAX_PRESET_WAYPOINTS);
+
+  try {
+    const refined = await fetchRoute(origin, destination, waypoints);
+    return { ...refined, mode: 'PRESET', loop: preset.loop, name: preset.name };
+  } catch {
+    return { ...routeFromPreset(preset), warning: PRESET_REFINE_FAILED_WARNING };
+  }
+}
+
+/** 経由地点の配列を max 個以下になるよう均等に間引く */
+export function thinWaypoints(points, max) {
+  if (points.length <= max) return points;
+  const step = points.length / max;
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(points[Math.floor(i * step)]);
+  return out;
 }
 
 /** GPX ファイル（File オブジェクト）からルートを作る */

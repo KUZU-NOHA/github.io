@@ -33,7 +33,11 @@ import {
   speedFromWheel, cadenceFromCrank, isPlausibleSpeed, isPlausibleCadence,
   BIKE_PROFILES, profileFor, trainerWindResistance,
 } from '../app/js/ride/physics.js';
-import { expandToPathPoints } from '../app/js/map/route.js';
+import {
+  expandToPathPoints, fetchRoute, routeFromPreset, routeFromPresetRefined,
+  thinWaypoints, PRESET_ROUTES,
+} from '../app/js/map/route.js';
+import { setApiKey } from '../app/js/config.js';
 import { latLngToWorldPoint, zoomForBounds } from '../app/js/map/fallback2d.js';
 import { RideEngine } from '../app/js/ride/engine.js';
 import {
@@ -200,6 +204,189 @@ test('expandToPathPoints: 間引いた標高を元の点数へ戻す', () => {
   assert.deepEqual(expandToPathPoints([0, 10], 3), [0, 5, 10]);
   assert.equal(expandToPathPoints([], 5).length, 0);
   assert.deepEqual(expandToPathPoints([1, 2, 3], 3), [1, 2, 3]);
+});
+
+/* ============ ルート生成（プリセットの道路スナップ） ============ */
+
+// config.js の getApiKey/setApiKey は localStorage を使う。Node には無いので
+// このテストファイル専用に最小限のインメモリ実装を用意する
+if (typeof globalThis.localStorage === 'undefined') {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+}
+
+// decodePolyline（geo.js）の逆変換。Routes API のモック応答を作るためだけに使う
+function encodeSignedValue(v) {
+  let n = v < 0 ? ~(v << 1) : v << 1;
+  let out = '';
+  while (n >= 0x20) {
+    out += String.fromCharCode((0x20 | (n & 0x1f)) + 63);
+    n >>= 5;
+  }
+  out += String.fromCharCode(n + 63);
+  return out;
+}
+function encodePolyline(points) {
+  let out = '';
+  let prevLat = 0;
+  let prevLng = 0;
+  for (const p of points) {
+    const lat = Math.round(p.lat * 1e5);
+    const lng = Math.round(p.lng * 1e5);
+    out += encodeSignedValue(lat - prevLat) + encodeSignedValue(lng - prevLng);
+    prevLat = lat;
+    prevLng = lng;
+  }
+  return out;
+}
+
+async function withMockFetch(impl, fn) {
+  const original = globalThis.fetch;
+  globalThis.fetch = impl;
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test('thinWaypoints: 上限以下ならそのまま返す', () => {
+  const points = [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }];
+  assert.deepEqual(thinWaypoints(points, 20), points);
+});
+
+test('thinWaypoints: 上限を超えたら均等に間引いてちょうど上限数にする', () => {
+  const points = Array.from({ length: 47 }, (_, i) => ({ lat: i, lng: i }));
+  const thinned = thinWaypoints(points, 20);
+  assert.equal(thinned.length, 20);
+  thinned.forEach((p) => assert.ok(points.some((o) => o.lat === p.lat)));
+});
+
+test('fetchRoute: API キー未設定なら waypoints を渡してもエラーになる', async () => {
+  setApiKey('');
+  await assert.rejects(
+    () => fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }, [{ lat: 0.5, lng: 0.5 }]),
+    /API キー/
+  );
+});
+
+test('fetchRoute: waypoints を intermediates として Routes API に送る', async () => {
+  setApiKey('TEST_KEY');
+  const origin = { lat: 35.0, lng: 135.0 };
+  const destination = { lat: 35.01, lng: 135.01 };
+  const waypoints = [{ lat: 35.002, lng: 135.002 }, { lat: 35.005, lng: 135.005 }];
+  let capturedBody = null;
+
+  await withMockFetch(
+    async (url, init) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({
+          routes: [{ polyline: { encodedPolyline: encodePolyline([origin, ...waypoints, destination]) } }],
+        }),
+      };
+    },
+    async () => {
+      const result = await fetchRoute(origin, destination, waypoints);
+      assert.equal(result.mode, 'BICYCLE');
+      assert.equal(result.path.points.length, 4);
+    }
+  );
+
+  assert.ok(capturedBody, 'fetch が呼ばれていない');
+  assert.equal(capturedBody.intermediates.length, 2);
+  assert.deepEqual(capturedBody.intermediates[0].location.latLng, { latitude: 35.002, longitude: 135.002 });
+  assert.deepEqual(capturedBody.origin.location.latLng, { latitude: 35.0, longitude: 135.0 });
+  setApiKey('');
+});
+
+test('fetchRoute: waypoints を渡さなければ intermediates を含めない', async () => {
+  setApiKey('TEST_KEY');
+  let capturedBody = null;
+
+  await withMockFetch(
+    async (url, init) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({
+          routes: [{ polyline: { encodedPolyline: encodePolyline([{ lat: 0, lng: 0 }, { lat: 1, lng: 1 }]) } }],
+        }),
+      };
+    },
+    () => fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })
+  );
+
+  assert.ok(capturedBody);
+  assert.ok(!('intermediates' in capturedBody));
+  setApiKey('');
+});
+
+test('routeFromPresetRefined: API キーが無ければ概算プリセットに警告を付けて返す', async () => {
+  setApiKey('');
+  const preset = PRESET_ROUTES[0];
+  const fallback = routeFromPreset(preset);
+  const result = await routeFromPresetRefined(preset);
+  assert.equal(result.path.totalDistanceM, fallback.path.totalDistanceM);
+  assert.equal(result.name, preset.name);
+  assert.ok(result.warning && result.warning.includes('API キー'), result.warning);
+});
+
+test('routeFromPresetRefined: API キーがあれば経由地点付きで Routes API から取得する', async () => {
+  setApiKey('TEST_KEY');
+  const preset = PRESET_ROUTES[0]; // 皇居一周（loop, 13点）
+  const refinedPoints = [preset.points[0], { lat: 35.69, lng: 139.75 }, preset.points[preset.points.length - 1]];
+  let capturedBody = null;
+
+  await withMockFetch(
+    async (url, init) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({ routes: [{ polyline: { encodedPolyline: encodePolyline(refinedPoints) } }] }),
+      };
+    },
+    async () => {
+      const result = await routeFromPresetRefined(preset);
+      assert.equal(result.name, preset.name);
+      assert.equal(result.loop, preset.loop);
+      assert.equal(result.path.points.length, refinedPoints.length);
+      // BICYCLE ルートは要件定義書 L-05 によりベータ表示の警告が必須
+      assert.ok(result.warning && result.warning.includes('ベータ'), result.warning);
+    }
+  );
+
+  assert.ok(capturedBody, 'fetch が呼ばれていない');
+  assert.deepEqual(capturedBody.origin.location.latLng, {
+    latitude: preset.points[0].lat, longitude: preset.points[0].lng,
+  });
+  assert.deepEqual(capturedBody.destination.location.latLng, {
+    latitude: preset.points[preset.points.length - 1].lat,
+    longitude: preset.points[preset.points.length - 1].lng,
+  });
+  assert.equal(capturedBody.intermediates.length, preset.points.length - 2);
+  setApiKey('');
+});
+
+test('routeFromPresetRefined: Routes API が失敗したら警告付きで概算ルートにフォールバックする', async () => {
+  setApiKey('TEST_KEY');
+  const preset = PRESET_ROUTES[1];
+  const fallback = routeFromPreset(preset);
+
+  await withMockFetch(
+    async () => ({ ok: false, status: 500, text: async () => 'server error' }),
+    async () => {
+      const result = await routeFromPresetRefined(preset);
+      assert.equal(result.path.totalDistanceM, fallback.path.totalDistanceM);
+      assert.ok(result.warning && result.warning.includes('取得できなかった'), result.warning);
+    }
+  );
+  setApiKey('');
 });
 
 /* ============ 2Dフォールバックの背景地図投影（Web Mercator） ============ */

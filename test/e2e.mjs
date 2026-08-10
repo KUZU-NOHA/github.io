@@ -50,6 +50,44 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? '  ok  ' : ' FAIL '} ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
+// decodePolyline（geo.js）の逆変換。Routes API のモック応答を作るためだけに使う簡易エンコーダ
+function encodePolylineValue(v) {
+  let n = v < 0 ? ~(v << 1) : v << 1;
+  let out = '';
+  while (n >= 0x20) {
+    out += String.fromCharCode((0x20 | (n & 0x1f)) + 63);
+    n >>= 5;
+  }
+  return out + String.fromCharCode(n + 63);
+}
+function encodePolyline(points) {
+  let out = '';
+  let prevLat = 0;
+  let prevLng = 0;
+  for (const p of points) {
+    const lat = Math.round(p.lat * 1e5);
+    const lng = Math.round(p.lng * 1e5);
+    out += encodePolylineValue(lat - prevLat) + encodePolylineValue(lng - prevLng);
+    prevLat = lat;
+    prevLng = lng;
+  }
+  return out;
+}
+/** computeRoutes の最小限のモック応答を組み立てる */
+function mockRoutesApiFulfill(points, distanceMeters) {
+  return {
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      routes: [{
+        polyline: { encodedPolyline: encodePolyline(points) },
+        distanceMeters,
+        duration: '900s',
+      }],
+    }),
+  };
+}
+
 const server = await startServer();
 
 // この環境には Chromium がプリインストールされている。playwright の
@@ -388,6 +426,14 @@ try {
   await bgPage.route('**/maps.googleapis.com/maps/api/elevation/**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK","results":[]}' })
   );
+  // プリセットは Routes API で道路スナップを試みる（routeFromPresetRefined）。
+  // モックしないと実キーではない TEST_KEY_FOR_MOCK で本物のエンドポイントに
+  // 当ててしまい、失敗までの待ち時間でルート選択がタイムアウトする
+  await bgPage.route('**/routes.googleapis.com/**', (route) =>
+    route.fulfill(mockRoutesApiFulfill(
+      [{ lat: 37.8065, lng: -122.4750 }, { lat: 37.8341, lng: -122.4794 }], 3200
+    ))
+  );
   const dummyPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
     'base64'
@@ -437,6 +483,90 @@ try {
   await bgBrowser.close();
 } catch (err) {
   check('背景地図シナリオで例外が発生していない', false, err.message);
+}
+
+/* ============================================================
+ * プリセットルートの道路スナップ（Routes API の経由地点）
+ *
+ * プリセットの座標は手作業による粗い近似のため、そのまま直線で結ぶと
+ * 建物や川を突っ切ってしまう問題があった（routeFromPresetRefined での対応）。
+ * Routes API の computeRoutes をモックし、
+ *   - プリセットの中間点が intermediates として送られること
+ *   - 取得した経路（モック応答の polyline）に実際に差し替わること
+ *   - API キーが無い場合は Routes API を呼ばず、警告付きで概算ルートに
+ *     フォールバックすること
+ * を確認する。
+ * ============================================================ */
+try {
+  const rpBrowser = await chromium.launch(
+    localChrome ? { executablePath: localChrome } : {}
+  );
+  const rpPage = await rpBrowser.newPage({ viewport: { width: 1280, height: 860 } });
+
+  const rpConsoleErrors = [];
+  rpPage.on('console', (m) => {
+    if (m.type() === 'error') rpConsoleErrors.push(m.text());
+  });
+  rpPage.on('pageerror', (e) => rpConsoleErrors.push(`pageerror: ${e.message}`));
+
+  // 地図表示自体はこのシナリオの対象外なので、Maps JS はブロックして 2D フォールバックへ
+  await rpPage.route('**/maps.googleapis.com/maps/api/js**', (route) => route.abort());
+  await rpPage.route('**/maps.googleapis.com/maps/api/elevation/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK","results":[]}' })
+  );
+
+  // プリセット（皇居一周）の実座標とは明確に異なる、往復10.25kmのダミー経路。
+  // 表示された距離がこの値になっていれば、モック応答へ実際に差し替わった証拠になる
+  let routesApiRequests = [];
+  await rpPage.route('**/routes.googleapis.com/**', (route) => {
+    routesApiRequests.push(JSON.parse(route.request().postData()));
+    route.fulfill(mockRoutesApiFulfill(
+      [{ lat: 35.6852, lng: 139.7528 }, { lat: 35.7200, lng: 139.7900 }, { lat: 35.6852, lng: 139.7528 }],
+      10248
+    ));
+  });
+
+  await rpPage.goto(`http://localhost:${PORT}/app/`, { waitUntil: 'networkidle' });
+  await rpPage.evaluate(() => localStorage.clear());
+  // 通信は全てモックするので実キーは不要。hasApiKey() を true にするためだけの値
+  await rpPage.evaluate(() => localStorage.setItem('vcycling.apiKey', 'TEST_KEY_FOR_MOCK'));
+  await rpPage.reload({ waitUntil: 'networkidle' });
+
+  await rpPage.click('[data-preset="imperial-palace"]');
+  await rpPage.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
+
+  check('プリセット選択で Routes API が経由地点付きで呼ばれる',
+    routesApiRequests.length === 1 && routesApiRequests[0].intermediates?.length > 0,
+    `呼び出し ${routesApiRequests.length} 回 / intermediates ${routesApiRequests[0]?.intermediates?.length ?? 0} 件`);
+
+  const rpSummary = await rpPage.locator('#route-summary').innerText();
+  check('道路スナップ後のルートに実際に差し替わる（モック応答の距離が表示される）',
+    rpSummary.includes('10.25 km'), rpSummary.replace(/\n/g, ' / '));
+
+  /* ---- API キーが無い場合は Routes API を呼ばずフォールバックする ---- */
+  await rpPage.evaluate(() => localStorage.removeItem('vcycling.apiKey'));
+  await rpPage.reload({ waitUntil: 'networkidle' });
+  await rpPage.click('#api-key-skip');
+  routesApiRequests = [];
+
+  await rpPage.click('[data-preset="osaka-castle"]');
+  await rpPage.waitForSelector('#route-ready:not([hidden])', { timeout: 5000 });
+
+  check('API キーが無い場合は Routes API を呼ばない',
+    routesApiRequests.length === 0, `${routesApiRequests.length} 回`);
+  const toastText = await rpPage.locator('#toast').innerText();
+  check('API キーが無い場合は概算ルートである旨の警告が出る',
+    toastText.includes('API キー') || toastText.includes('概算'), toastText);
+
+  const rpUnexpectedErrors = rpConsoleErrors.filter(
+    (e) => !/net::ERR_FAILED|net::ERR_CONNECTION_RESET|maps\/api\/js/.test(e)
+  );
+  check('プリセット道路スナップのシナリオで想定外のコンソールエラーが出ない',
+    rpUnexpectedErrors.length === 0, rpUnexpectedErrors.slice(0, 3).join(' | '));
+
+  await rpBrowser.close();
+} catch (err) {
+  check('プリセット道路スナップのシナリオで例外が発生していない', false, err.message);
 } finally {
   server.close();
 }
