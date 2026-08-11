@@ -45,6 +45,13 @@
      `bindLicenseSetup` 参照）。動作確認が済むまでは Stripe のテストモードで進めて良い
 3. **Vercelで新規プロジェクトを作成**し、このリポジトリを接続する。プロジェクト設定の
    **Root Directory を `server` に設定**する（`app/`側はこれまでどおりGitHub Pagesのまま）
+   > ⚠️ **つまずきやすい点**: インポート直後はリポジトリの**デフォルトブランチ**（`main`）を
+   > 元にフォルダ一覧が作られる。`main` に `server/` が無い場合、Root Directoryの選択肢に
+   > `server` が出てこない。その場合は一旦そのままプロジェクトを作成し、作成後に
+   > **Settings → Build and Deployment → Root Directory** を `server` に変更する。
+   > 「Redeploy」は元のデプロイと同じブランチ・コミットのまま再実行されるため、正しい
+   > ブランチに新しくpushしてプレビューデプロイを発生させ、**Deployments タブの「…」→
+   > Promote to Production** で本番に昇格させること
 4. Vercel の Environment Variables に `.env.example` の内容を設定する（`STRIPE_SECRET_KEY`
    はStripeダッシュボードの「開発者」→「APIキー」から取得する）
 5. **Vercel Hobby（無料）プランは商用利用不可**。実際に課金を始める時点で **Pro（$20/月〜）に
