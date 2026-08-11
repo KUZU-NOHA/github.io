@@ -15,9 +15,10 @@
  * これにより「キーが無いと何も試せない」状態を避けている。
  */
 
-import { getApiKey } from '../config.js';
+import { getApiKey, hasLicenseKey, backendAuthHeaders, BACKEND_BASE_URL } from '../config.js';
 
 const STATIC_MAP_ENDPOINT = 'https://maps.googleapis.com/maps/api/staticmap';
+const BACKEND_STATIC_MAP_ENDPOINT = `${BACKEND_BASE_URL}/api/maps/staticmap`;
 const TILE_SIZE = 256;
 const MAX_ZOOM = 20;
 
@@ -158,7 +159,8 @@ export class Fallback2D {
    */
   async _loadBackground() {
     const key = getApiKey();
-    if (!key || !this._w || !this._h) return;
+    const useBackend = hasLicenseKey();
+    if ((!key && !useBackend) || !this._w || !this._h) return;
 
     const maxDim = 640;
     const aspect = this._w / this._h;
@@ -175,15 +177,16 @@ export class Fallback2D {
       maptype: 'roadmap',
       center: `${this._center.lat},${this._center.lng}`,
       zoom: String(zoom),
-      key,
     });
+
+    const src = await this._resolveBackgroundSrc(params, key, useBackend);
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
     await new Promise((resolve, reject) => {
       img.onload = resolve;
       img.onerror = () => reject(new Error('背景地図の取得に失敗しました'));
-      img.src = `${STATIC_MAP_ENDPOINT}?${params}`;
+      img.src = src;
     });
 
     // 実際に取得できた zoom とサイズで Canvas 側の投影も合わせ直す
@@ -192,6 +195,33 @@ export class Fallback2D {
     this._bgImageFetchSize = { w: sizeW, h: sizeH };
     this._bgImage = img;
     if (this._lastSnapshot) this.update(this._lastSnapshot);
+  }
+
+  /**
+   * 背景地図画像の取得元を決める。
+   *
+   * サブスクのライセンスキーがあれば、実キーをサーバー側にしか置かない
+   * バックエンド（系統A、要件定義書 7.5）から画像バイト列を取得し、
+   * Blob URL に変換して <img> に渡す（Google に直接アクセスするのは
+   * バックエンドのみで、実キーはブラウザに一切出ない）。
+   * バックエンドが未デプロイ・不通の場合や、サブスクが無い場合は
+   * これまでどおり BYOK キーで Google に直接アクセスする。
+   */
+  async _resolveBackgroundSrc(params, byokKey, useBackend) {
+    if (useBackend) {
+      try {
+        const res = await fetch(`${BACKEND_STATIC_MAP_ENDPOINT}?${params}`, {
+          headers: backendAuthHeaders(),
+        });
+        if (!res.ok) throw new Error('backend rejected');
+        const blob = await res.blob();
+        return URL.createObjectURL(blob);
+      } catch {
+        // バックエンド不通時は BYOK があればフォールバック（無ければ下で例外）
+      }
+    }
+    if (!byokKey) throw new Error('背景地図の取得に失敗しました');
+    return `${STATIC_MAP_ENDPOINT}?${params}&key=${encodeURIComponent(byokKey)}`;
   }
 
   update(snapshot) {

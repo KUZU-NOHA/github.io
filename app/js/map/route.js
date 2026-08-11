@@ -6,7 +6,7 @@
  * （要件定義書 F-102）。加えて GPX インポートとプリセットも用意している。
  */
 
-import { getApiKey } from '../config.js';
+import { getApiKey, hasLicenseKey, backendAuthHeaders, BACKEND_BASE_URL } from '../config.js';
 import {
   buildPath, decodePolyline, resample, parseGpx, smoothElevationsByDistance,
 } from './geo.js';
@@ -68,47 +68,49 @@ export const PRESET_ROUTES = [
  * Routes API で2地点間のルートを取得する（地点を指定してのルート生成用）。
  * BICYCLE が使えない地域では WALK → DRIVE と自動的に切り替える。
  *
+ * サブスクのライセンスキーがあればバックエンド（系統A、要件定義書 7.5）
+ * 経由で呼ぶ。バックエンドが不通の場合は BYOK キーがあればそちらに
+ * フォールバックする。
+ *
  * @returns {{path: object, mode: string, warning: string|null}}
  */
 export async function fetchRoute(origin, destination) {
+  const useBackend = hasLicenseKey();
   const key = getApiKey();
-  if (!key) throw new Error('API キーが未設定です');
+  if (!useBackend && !key) throw new Error('API キーが未設定です');
 
+  if (useBackend) {
+    try {
+      return await attemptRouteFetch(origin, destination, (mode) =>
+        callRoutesApi(origin, destination, mode, { viaBackend: true })
+      );
+    } catch (err) {
+      if (!key) throw new Error(`ルートを生成できませんでした。\n${err.message}`);
+      // バックエンド不通時は BYOK にフォールバックする（下へ続く）
+    }
+  }
+
+  try {
+    return await attemptRouteFetch(origin, destination, (mode) =>
+      callRoutesApi(origin, destination, mode, { viaBackend: false, key })
+    );
+  } catch (err) {
+    throw new Error(`ルートを生成できませんでした。\n${err.message}`);
+  }
+}
+
+/** BICYCLE → WALK → DRIVE の順で試し、最初に成功したものを返す（呼び出し方法は callGoogle に委譲） */
+async function attemptRouteFetch(origin, destination, callGoogle) {
   const modes = ['BICYCLE', 'WALK', 'DRIVE'];
   const errors = [];
 
   for (const mode of modes) {
     try {
-      const res = await fetch(ROUTES_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': key,
-          'X-Goog-FieldMask':
-            'routes.polyline.encodedPolyline,routes.distanceMeters,routes.duration',
-        },
-        body: JSON.stringify({
-          origin: { location: { latLng: toLatLng(origin) } },
-          destination: { location: { latLng: toLatLng(destination) } },
-          travelMode: mode,
-          polylineQuality: 'HIGH_QUALITY',
-          ...(mode === 'DRIVE' ? { routingPreference: 'TRAFFIC_UNAWARE' } : {}),
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.text();
-        errors.push(`${mode}: HTTP ${res.status} ${body.slice(0, 200)}`);
-        continue;
-      }
-
-      const json = await res.json();
-      const encoded = json?.routes?.[0]?.polyline?.encodedPolyline;
+      const encoded = await callGoogle(mode);
       if (!encoded) {
         errors.push(`${mode}: 経路が見つかりません`);
         continue;
       }
-
       return {
         path: buildPath(decodePolyline(encoded)),
         mode,
@@ -125,7 +127,41 @@ export async function fetchRoute(origin, destination) {
     }
   }
 
-  throw new Error(`ルートを生成できませんでした。\n${errors.join('\n')}`);
+  throw new Error(errors.join('\n'));
+}
+
+async function callRoutesApi(origin, destination, mode, { viaBackend, key }) {
+  const body = JSON.stringify({
+    origin: { location: { latLng: toLatLng(origin) } },
+    destination: { location: { latLng: toLatLng(destination) } },
+    travelMode: mode,
+    polylineQuality: 'HIGH_QUALITY',
+    ...(mode === 'DRIVE' ? { routingPreference: 'TRAFFIC_UNAWARE' } : {}),
+  });
+
+  const res = await fetch(
+    viaBackend ? `${BACKEND_BASE_URL}/api/maps/routes` : ROUTES_ENDPOINT,
+    {
+      method: 'POST',
+      headers: viaBackend
+        ? { 'Content-Type': 'application/json', ...backendAuthHeaders() }
+        : {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': key,
+            'X-Goog-FieldMask':
+              'routes.polyline.encodedPolyline,routes.distanceMeters,routes.duration',
+          },
+      body,
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status} ${text.slice(0, 200)}`);
+  }
+
+  const json = await res.json();
+  return json?.routes?.[0]?.polyline?.encodedPolyline;
 }
 
 function toLatLng(p) {
@@ -137,31 +173,54 @@ function toLatLng(p) {
  * Elevation API は1リクエストあたりの点数に上限があるため、
  * 経路を最大 samples 点に間引いてから問い合わせる。
  *
+ * サブスクのライセンスキーがあればバックエンド（系統A）経由、
+ * 無ければ／不通ならBYOKキーで直接、の順で試す。
  * 取得に失敗しても走行は継続できるよう、空配列を返して呼び出し側で吸収する。
  */
 export async function fetchElevations(path, samples = 300) {
+  const useBackend = hasLicenseKey();
   const key = getApiKey();
-  if (!key) return [];
+  if (!useBackend && !key) return [];
 
   const sampled = resample(path, Math.min(samples, path.points.length * 2));
-  const locations = sampled.map((p) => `${p.lat},${p.lng}`).join('|');
+  const results = await resolveElevationResults(sampled, useBackend, key);
+  if (!results) return [];
 
-  try {
-    const url = `${ELEVATION_ENDPOINT}?locations=${encodeURIComponent(locations)}&key=${key}`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const json = await res.json();
-    if (json.status !== 'OK' || !Array.isArray(json.results)) return [];
+  // Elevation API の実測値には数十cm〜数m単位のノイズが乗るため、
+  // 全点へ伸ばす前に平滑化しておく（勾配連動の精度に直結する）
+  const sampledWithEle = sampled.map((p, i) => ({ ...p, ele: results[i].elevation }));
+  const smoothed = smoothElevationsByDistance(sampledWithEle);
+  // 間引いた標高を、経路の全点数に線形補間で戻す
+  return expandToPathPoints(smoothed, path.points.length);
+}
 
-    // Elevation API の実測値には数十cm〜数m単位のノイズが乗るため、
-    // 全点へ伸ばす前に平滑化しておく（勾配連動の精度に直結する）
-    const sampledWithEle = sampled.map((p, i) => ({ ...p, ele: json.results[i].elevation }));
-    const smoothed = smoothElevationsByDistance(sampledWithEle);
-    // 間引いた標高を、経路の全点数に線形補間で戻す
-    return expandToPathPoints(smoothed, path.points.length);
-  } catch {
-    return [];
+async function resolveElevationResults(sampled, useBackend, key) {
+  if (useBackend) {
+    try {
+      const results = await callElevationApi(sampled, { viaBackend: true });
+      if (results) return results;
+    } catch {
+      /* バックエンド不通時は BYOK があれば下でフォールバックする */
+    }
   }
+  if (!key) return null;
+  try {
+    return await callElevationApi(sampled, { viaBackend: false, key });
+  } catch {
+    return null;
+  }
+}
+
+async function callElevationApi(sampled, { viaBackend, key }) {
+  const locations = sampled.map((p) => `${p.lat},${p.lng}`).join('|');
+  const url = viaBackend
+    ? `${BACKEND_BASE_URL}/api/maps/elevation?locations=${encodeURIComponent(locations)}`
+    : `${ELEVATION_ENDPOINT}?locations=${encodeURIComponent(locations)}&key=${key}`;
+  const res = await fetch(url, viaBackend ? { headers: backendAuthHeaders() } : undefined);
+  if (!res.ok) return null;
+  const json = await res.json();
+  if (json.status !== 'OK' || !Array.isArray(json.results)) return null;
+  return json.results;
 }
 
 /** n 点の配列を m 点に線形補間で伸縮する */

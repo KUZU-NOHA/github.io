@@ -8,6 +8,7 @@
 import {
   getApiKey, setApiKey, hasApiKey, loadSettings, saveSettings,
   loadGoogleMaps, DEFAULT_SETTINGS,
+  getLicenseKey, setLicenseKey, hasLicenseKey, getLicenseEmail, setLicenseEmail, SUBSCRIBE_URL,
 } from './config.js';
 import { buildPath } from './map/geo.js';
 import {
@@ -84,8 +85,8 @@ async function init() {
   renderFavorites();
   updateBleAvailability();
 
-  // API キーがあれば Maps を先に読み込んでおく（走行開始を速くするため）
-  if (hasApiKey()) {
+  // API キー・サブスクのいずれかがあれば Maps を先に読み込んでおく（走行開始を速くするため）
+  if (hasApiKey() || hasLicenseKey()) {
     loadGoogleMaps()
       .then(() => { app.mapsReady = true; setMapsStatus(true); })
       .catch((err) => { setMapsStatus(false, err.message); });
@@ -141,6 +142,64 @@ function bindSetup() {
     toast('2D 表示モードで開始します。3D 映像には API キーが必要です。');
     showScreen('route');
   });
+
+  bindLicenseSetup();
+}
+
+function bindLicenseSetup() {
+  const emailInput = document.getElementById('license-email-input');
+  const keyInput = document.getElementById('license-key-input');
+  if (!emailInput || !keyInput) return;
+
+  emailInput.value = getLicenseEmail();
+  keyInput.value = getLicenseKey();
+  setLicenseStatus(hasLicenseKey());
+
+  const subscribeLink = document.getElementById('subscribe-link');
+  if (subscribeLink) subscribeLink.href = SUBSCRIBE_URL;
+
+  document.getElementById('license-key-save').addEventListener('click', async () => {
+    const email = emailInput.value.trim();
+    const key = keyInput.value.trim();
+    if (!key || !email) {
+      toast('メールアドレスとライセンスキーの両方を入力してください', 'warn');
+      return;
+    }
+    setLicenseEmail(email);
+    setLicenseKey(key);
+    toast('ライセンスキーを保存しました。確認しています…');
+    try {
+      app.mapsReady = false;
+      await loadGoogleMaps();
+      app.mapsReady = true;
+      setMapsStatus(true);
+      setLicenseStatus(true);
+      toast('サブスクを確認しました。3D 映像が使えます', 'ok');
+      showScreen('route');
+    } catch (err) {
+      setLicenseStatus(false, err.message);
+      toast(err.message, 'error');
+    }
+  });
+
+  document.getElementById('license-key-clear').addEventListener('click', () => {
+    setLicenseKey('');
+    setLicenseEmail('');
+    keyInput.value = '';
+    setLicenseStatus(false);
+    toast('ライセンスキーを解除しました。');
+  });
+}
+
+function setLicenseStatus(ok, message = '') {
+  const el = document.getElementById('license-status');
+  if (!el) return;
+  el.textContent = ok
+    ? '✅ サブスク有効（3D 映像・ルート検索・標高が使えます）'
+    : message
+      ? `⚠️ ${message}`
+      : '未設定';
+  el.className = `status ${ok ? 'is-ok' : message ? 'is-warn' : ''}`;
 }
 
 function setMapsStatus(ok, message = '') {
@@ -246,8 +305,8 @@ function bindRouteScreen() {
 
   document.getElementById('route-search').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!hasApiKey()) {
-      toast('地点検索には API キーが必要です。プリセットか GPX をお使いください。', 'warn');
+    if (!hasApiKey() && !hasLicenseKey()) {
+      toast('地点検索には API キーかサブスクが必要です。プリセットか GPX をお使いください。', 'warn');
       return;
     }
     const from = parseLatLng(document.getElementById('route-from').value);
@@ -299,8 +358,8 @@ async function selectRoute(result) {
   const { path } = result;
   let elevations = result.elevations ?? [];
 
-  // GPX に標高が無く API キーがある場合のみ Elevation API を呼ぶ
-  if (elevations.length === 0 && hasApiKey()) {
+  // GPX に標高が無く API キー・サブスクのいずれかがある場合のみ Elevation API を呼ぶ
+  if (elevations.length === 0 && (hasApiKey() || hasLicenseKey())) {
     setRouteBusy(true);
     elevations = await fetchElevations(path);
     setRouteBusy(false);
@@ -690,7 +749,7 @@ async function setupView() {
   const container = document.getElementById('map-stage');
   app.view?.destroy();
 
-  if (hasApiKey()) {
+  if (hasApiKey() || hasLicenseKey()) {
     try {
       if (!app.mapsReady) {
         await loadGoogleMaps();

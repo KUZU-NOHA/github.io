@@ -33,8 +33,14 @@ import {
   speedFromWheel, cadenceFromCrank, isPlausibleSpeed, isPlausibleCadence,
   BIKE_PROFILES, profileFor, trainerWindResistance,
 } from '../app/js/ride/physics.js';
-import { expandToPathPoints, fetchRoute, PRESET_ROUTES } from '../app/js/map/route.js';
-import { setApiKey } from '../app/js/config.js';
+import { expandToPathPoints, fetchRoute, fetchElevations, PRESET_ROUTES } from '../app/js/map/route.js';
+import {
+  setApiKey, getLicenseKey, setLicenseKey, hasLicenseKey,
+  getLicenseEmail, setLicenseEmail, backendAuthHeaders,
+} from '../app/js/config.js';
+import { isLicenseActive, clearLicenseCache } from '../server/lib/licenses.js';
+import { requireLicense } from '../server/lib/requireLicense.js';
+import { withCors } from '../server/lib/cors.js';
 import { latLngToWorldPoint, zoomForBounds } from '../app/js/map/fallback2d.js';
 import { RideEngine } from '../app/js/ride/engine.js';
 import {
@@ -339,6 +345,267 @@ test('fetchRoute: BICYCLE が失敗したら WALK にフォールバックする
 
   assert.deepEqual(calledModes, ['BICYCLE', 'WALK']);
   setApiKey('');
+});
+
+/* ============ サブスク（ライセンスキー）管理 ============ */
+
+test('getLicenseKey/setLicenseKey/hasLicenseKey: 保存・削除ができる', () => {
+  setLicenseKey('LICENSE-123');
+  assert.equal(getLicenseKey(), 'LICENSE-123');
+  assert.ok(hasLicenseKey());
+  setLicenseKey('');
+  assert.equal(getLicenseKey(), '');
+  assert.ok(!hasLicenseKey());
+});
+
+test('getLicenseEmail/setLicenseEmail: 前後の空白を取り除いて保存する', () => {
+  setLicenseEmail('  user@example.com  ');
+  assert.equal(getLicenseEmail(), 'user@example.com');
+  setLicenseEmail('');
+});
+
+test('backendAuthHeaders: ライセンスキー未設定なら空オブジェクト', () => {
+  setLicenseKey('');
+  assert.deepEqual(backendAuthHeaders(), {});
+});
+
+test('backendAuthHeaders: ライセンスキー設定時は専用ヘッダーを組み立てる', () => {
+  setLicenseKey('LICENSE-123');
+  setLicenseEmail('user@example.com');
+  assert.deepEqual(backendAuthHeaders(), {
+    'X-Vcycling-License-Key': 'LICENSE-123',
+    'X-Vcycling-License-Email': 'user@example.com',
+  });
+  setLicenseKey('');
+  setLicenseEmail('');
+});
+
+test('fetchRoute: サブスク（ライセンスキー）があればバックエンド経由で呼ぶ', async () => {
+  setApiKey('');
+  setLicenseKey('LICENSE-1');
+  setLicenseEmail('user@example.com');
+  const origin = { lat: 35.0, lng: 135.0 };
+  const destination = { lat: 35.01, lng: 135.01 };
+  let capturedUrl = null;
+  let capturedHeaders = null;
+
+  await withMockFetch(
+    async (url, init) => {
+      capturedUrl = String(url);
+      capturedHeaders = init.headers;
+      return {
+        ok: true,
+        json: async () => ({
+          routes: [{ polyline: { encodedPolyline: encodePolyline([origin, destination]) } }],
+        }),
+      };
+    },
+    async () => {
+      const result = await fetchRoute(origin, destination);
+      assert.equal(result.mode, 'BICYCLE');
+    }
+  );
+
+  assert.ok(capturedUrl.includes('/api/maps/routes'), capturedUrl);
+  assert.equal(capturedHeaders['X-Vcycling-License-Key'], 'LICENSE-1');
+  setLicenseKey('');
+  setLicenseEmail('');
+});
+
+test('fetchRoute: バックエンドが不通でも API キーがあれば BYOK にフォールバックする', async () => {
+  setApiKey('BYOK_KEY');
+  setLicenseKey('LICENSE-1');
+  const origin = { lat: 0, lng: 0 };
+  const destination = { lat: 1, lng: 1 };
+  const calledUrls = [];
+
+  await withMockFetch(
+    async (url) => {
+      calledUrls.push(String(url));
+      if (String(url).includes('/api/maps/routes')) throw new Error('backend down');
+      return {
+        ok: true,
+        json: async () => ({
+          routes: [{ polyline: { encodedPolyline: encodePolyline([origin, destination]) } }],
+        }),
+      };
+    },
+    async () => {
+      const result = await fetchRoute(origin, destination);
+      assert.equal(result.mode, 'BICYCLE');
+    }
+  );
+
+  assert.ok(calledUrls.some((u) => u.includes('/api/maps/routes')));
+  assert.ok(calledUrls.some((u) => u.includes('routes.googleapis.com')));
+  setLicenseKey('');
+  setApiKey('');
+});
+
+test('fetchRoute: サブスクがあってもバックエンド不通・BYOK無しならエラーになる', async () => {
+  setApiKey('');
+  setLicenseKey('LICENSE-1');
+
+  await withMockFetch(
+    async () => { throw new Error('backend down'); },
+    () => assert.rejects(() => fetchRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }))
+  );
+
+  setLicenseKey('');
+});
+
+test('fetchElevations: サブスクがあればバックエンド経由で呼ぶ', async () => {
+  setApiKey('');
+  setLicenseKey('LICENSE-1');
+  const path = buildPath([{ lat: 35.0, lng: 139.0 }, { lat: 35.001, lng: 139.0 }]);
+  let capturedUrl = null;
+
+  const elevations = await withMockFetch(
+    async (url) => {
+      capturedUrl = String(url);
+      return { ok: true, json: async () => ({ status: 'OK', results: [{ elevation: 10 }, { elevation: 12 }] }) };
+    },
+    () => fetchElevations(path, 2)
+  );
+
+  assert.ok(capturedUrl.includes('/api/maps/elevation'), capturedUrl);
+  assert.equal(elevations.length, path.points.length);
+  setLicenseKey('');
+});
+
+test('fetchElevations: バックエンドが失敗しても BYOK があればフォールバックする', async () => {
+  setApiKey('BYOK_KEY');
+  setLicenseKey('LICENSE-1');
+  const path = buildPath([{ lat: 35.0, lng: 139.0 }, { lat: 35.001, lng: 139.0 }]);
+  const calledUrls = [];
+
+  const elevations = await withMockFetch(
+    async (url) => {
+      calledUrls.push(String(url));
+      if (String(url).includes('/api/maps/elevation')) return { ok: false, status: 500, text: async () => 'fail' };
+      return { ok: true, json: async () => ({ status: 'OK', results: [{ elevation: 5 }, { elevation: 6 }] }) };
+    },
+    () => fetchElevations(path, 2)
+  );
+
+  assert.ok(calledUrls.some((u) => u.includes('/api/maps/elevation')));
+  assert.ok(calledUrls.some((u) => u.includes('maps.googleapis.com/maps/api/elevation')));
+  assert.equal(elevations.length, path.points.length);
+  setLicenseKey('');
+  setApiKey('');
+});
+
+test('fetchElevations: バックエンドも BYOK も無ければ空配列を返す', async () => {
+  setApiKey('');
+  setLicenseKey('');
+  const path = buildPath([{ lat: 35.0, lng: 139.0 }, { lat: 35.001, lng: 139.0 }]);
+  assert.deepEqual(await fetchElevations(path, 2), []);
+});
+
+/* ============ バックエンド（server/）: ライセンス確認・CORS ============ */
+
+function fakeRes() {
+  return {
+    headers: {},
+    statusCode: null,
+    body: null,
+    setHeader(k, v) { this.headers[k] = v; },
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.body = payload; return this; },
+  };
+}
+
+test('withCors: 許可オリジン・メソッド・ヘッダーを設定する', () => {
+  const res = fakeRes();
+  withCors(res);
+  assert.equal(res.headers['Access-Control-Allow-Origin'], 'https://kuzu-noha.github.io');
+  assert.ok(res.headers['Access-Control-Allow-Methods'].includes('POST'));
+  assert.ok(res.headers['Access-Control-Allow-Headers'].includes('X-Vcycling-License-Key'));
+});
+
+test('isLicenseActive: キーが空なら false（Lemon Squeezy に問い合わせない）', async () => {
+  let called = false;
+  const active = await isLicenseActive('', { fetchImpl: async () => { called = true; }, now: 0 });
+  assert.equal(active, false);
+  assert.ok(!called);
+});
+
+test('isLicenseActive: valid かつ status=active なら true', async () => {
+  clearLicenseCache();
+  let capturedBody = null;
+  const fetchImpl = async (url, init) => {
+    capturedBody = init.body;
+    return { ok: true, json: async () => ({ valid: true, license_key: { status: 'active' } }) };
+  };
+  assert.equal(await isLicenseActive('LICENSE-1', { fetchImpl, now: 1000 }), true);
+  assert.ok(String(capturedBody).includes('LICENSE-1'));
+});
+
+test('isLicenseActive: status が active 以外なら false', async () => {
+  clearLicenseCache();
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ valid: true, license_key: { status: 'expired' } }) });
+  assert.equal(await isLicenseActive('LICENSE-2', { fetchImpl, now: 2000 }), false);
+});
+
+test('isLicenseActive: HTTPエラー・fetch例外はどちらも false 扱いにする', async () => {
+  clearLicenseCache();
+  assert.equal(
+    await isLicenseActive('LICENSE-3', { fetchImpl: async () => ({ ok: false }), now: 3000 }),
+    false
+  );
+  clearLicenseCache();
+  assert.equal(
+    await isLicenseActive('LICENSE-3', { fetchImpl: async () => { throw new Error('network down'); }, now: 3000 }),
+    false
+  );
+});
+
+test('isLicenseActive: 5分以内は再照会せずキャッシュを使う', async () => {
+  clearLicenseCache();
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    return { ok: true, json: async () => ({ valid: true, license_key: { status: 'active' } }) };
+  };
+  const now = 10_000;
+  assert.equal(await isLicenseActive('LICENSE-4', { fetchImpl, now }), true);
+  assert.equal(await isLicenseActive('LICENSE-4', { fetchImpl, now: now + 60_000 }), true);
+  assert.equal(calls, 1, 'キャッシュ有効期間内は fetch を呼ばないはず');
+  assert.equal(await isLicenseActive('LICENSE-4', { fetchImpl, now: now + 6 * 60_000 }), true);
+  assert.equal(calls, 2, '5分経過後は再照会するはず');
+});
+
+test('requireLicense: ヘッダー無しなら401を返し false になる', async () => {
+  const res = fakeRes();
+  const ok = await requireLicense({ headers: {} }, res);
+  assert.equal(ok, false);
+  assert.equal(res.statusCode, 401);
+});
+
+test('requireLicense: 無効なライセンスキーなら403を返し false になる', async () => {
+  clearLicenseCache();
+  await withMockFetch(
+    async () => ({ ok: true, json: async () => ({ valid: false }) }),
+    async () => {
+      const res = fakeRes();
+      const ok = await requireLicense({ headers: { 'x-vcycling-license-key': 'BAD' } }, res);
+      assert.equal(ok, false);
+      assert.equal(res.statusCode, 403);
+    }
+  );
+});
+
+test('requireLicense: 有効なライセンスキーなら true を返しレスポンスに触れない', async () => {
+  clearLicenseCache();
+  await withMockFetch(
+    async () => ({ ok: true, json: async () => ({ valid: true, license_key: { status: 'active' } }) }),
+    async () => {
+      const res = fakeRes();
+      const ok = await requireLicense({ headers: { 'x-vcycling-license-key': 'GOOD' } }, res);
+      assert.equal(ok, true);
+      assert.equal(res.statusCode, null);
+    }
+  );
 });
 
 /* ============ 2Dフォールバックの背景地図投影（Web Mercator） ============ */

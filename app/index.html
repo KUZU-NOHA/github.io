@@ -53,6 +53,29 @@
     </div>
 
     <div class="card">
+      <h3>サブスクリプション（有料会員）</h3>
+      <p class="muted">
+        API キーを自分で用意しなくても、月額会員になると 3D 映像・ルート検索・
+        地点指定ルートの標高が使えます。<strong>上の API キー欄にキーを貼る使い方は、
+        これまでどおり無料のまま変わりません。</strong>両方設定した場合はサブスクを優先します。
+      </p>
+      <div class="row">
+        <input type="email" id="license-email-input" placeholder="登録したメールアドレス" autocomplete="email">
+      </div>
+      <div class="row">
+        <input type="text" id="license-key-input" placeholder="ライセンスキー" autocomplete="off">
+        <button type="button" id="license-key-save" class="primary">有効化</button>
+        <button type="button" id="license-key-clear">解除</button>
+      </div>
+      <p class="status" id="license-status">未設定</p>
+      <p class="note">
+        まだ会員でない方は
+        <a id="subscribe-link" href="#" target="_blank" rel="noopener">こちらから登録</a>
+        してください（決済ページへ移動します）。登録後にメールで届くライセンスキーをここに貼ってください。
+      </p>
+    </div>
+
+    <div class="card">
       <h3>プロフィールと走行設定</h3>
       <form id="settings-form" class="grid-form">
         <label>体重 (kg)<input type="number" name="weightKg" min="30" max="200" step="0.1"></label>
