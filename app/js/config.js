@@ -24,8 +24,11 @@ const SETTINGS_STORAGE = 'vcycling.settings';
 const LICENSE_KEY_STORAGE = 'vcycling.licenseKey';
 const LICENSE_EMAIL_STORAGE = 'vcycling.licenseEmail';
 
-// Phase B でバックエンド（server/）を実デプロイしたら、実際のURLに差し替える
-export const BACKEND_BASE_URL = 'https://vcycling-backend.vercel.app';
+// Vercelにデプロイした server/ の実URL（claude/google-maps-virtual-cycling-txcloc
+// ブランチの最新デプロイを指すエイリアス）。ブランチ名が変わる、または
+// プロジェクト名だけのクリーンなドメインが判明した場合はここを更新する
+export const BACKEND_BASE_URL =
+  'https://vcycling-backend-git-claude-google-m-67f135-kuzu-nohas-projects.vercel.app';
 
 // Stripeサンドボックス（テストモード）のPayment Link。動作確認用の仮価格（月額500円）で
 // 作成済み（after_completionのredirectは https://kuzu-noha.github.io/github.io/app/
