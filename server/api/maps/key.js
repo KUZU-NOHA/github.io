@@ -13,7 +13,7 @@ import { withCors } from '../../lib/cors.js';
  * リファラ制限（kuzu-noha.github.io/github.io/*）を掛けること。
  */
 export default async function handler(req, res) {
-  withCors(res);
+  withCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
 

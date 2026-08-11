@@ -8,7 +8,7 @@ const STATIC_MAP_ENDPOINT = 'https://maps.googleapis.com/maps/api/staticmap';
  * 画像バイト列をそのまま中継して返す。実キーはこの関数の中にしかない。
  */
 export default async function handler(req, res) {
-  withCors(res);
+  withCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 

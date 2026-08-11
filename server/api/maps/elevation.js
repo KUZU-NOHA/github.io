@@ -8,7 +8,7 @@ const ELEVATION_ENDPOINT = 'https://maps.googleapis.com/maps/api/elevation/json'
  * 実キーはこの関数の中にしかない。クライアントには渡さない。
  */
 export default async function handler(req, res) {
-  withCors(res);
+  withCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 

@@ -8,7 +8,7 @@ const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRout
  * 実キーはこの関数の中にしかない。クライアントには渡さない。
  */
 export default async function handler(req, res) {
-  withCors(res);
+  withCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
 

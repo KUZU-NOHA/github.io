@@ -16,7 +16,7 @@ import { hashToken } from '../../lib/licenses.js';
  * session_id で複数回呼ばれても最後に発行されたキーだけが有効になる。
  */
 export default async function handler(req, res) {
-  withCors(res);
+  withCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
 

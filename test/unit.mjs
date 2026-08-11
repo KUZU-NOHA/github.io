@@ -523,6 +523,12 @@ test('withCors: 許可オリジン・メソッド・ヘッダーを設定する'
   assert.ok(res.headers['Access-Control-Allow-Headers'].includes('X-Vcycling-License-Key'));
 });
 
+test('withCors: ALLOWED_ORIGIN未設定時、reqのOriginに関わらず既定値を返す', () => {
+  const res = fakeRes();
+  withCors(res, { headers: { origin: 'http://localhost:8000' } });
+  assert.equal(res.headers['Access-Control-Allow-Origin'], 'https://kuzu-noha.github.io');
+});
+
 // テスト用の最小 Stripe クライアント。customers.retrieve / subscriptions.list だけ実装する
 function fakeStripe({ metadata = {}, activeSubscriptions = [], onRetrieve, onList } = {}) {
   return {
