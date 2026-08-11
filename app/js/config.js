@@ -27,11 +27,11 @@ const LICENSE_EMAIL_STORAGE = 'vcycling.licenseEmail';
 // Phase B でバックエンド（server/）を実デプロイしたら、実際のURLに差し替える
 export const BACKEND_BASE_URL = 'https://vcycling-backend.vercel.app';
 
-// Phase B で Stripe の Payment Link を作成したら、実際のURLに差し替える。
-// Payment Link の「支払い後」設定で、下記のURLへリダイレクトするようにしておくこと
-// （{CHECKOUT_SESSION_ID} はStripeが実際のセッションIDに置換して埋め込む）:
-//   https://kuzu-noha.github.io/github.io/app/?checkout_session_id={CHECKOUT_SESSION_ID}
-export const SUBSCRIBE_URL = 'https://buy.stripe.com/test_00000000000000';
+// Stripeサンドボックス（テストモード）のPayment Link。動作確認用の仮価格（月額500円）で
+// 作成済み（after_completionのredirectは https://kuzu-noha.github.io/github.io/app/
+// ?checkout_session_id={CHECKOUT_SESSION_ID} に設定済み）。本番移行時は本番アカウントで
+// 正式な価格のPayment Linkを作り直し、このURLを差し替えること
+export const SUBSCRIBE_URL = 'https://buy.stripe.com/test_aFa5kD7M0cyY5n7ga45J600';
 
 export const DEFAULT_SETTINGS = {
   weightKg: 70,
