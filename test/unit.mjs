@@ -38,7 +38,7 @@ import {
   setApiKey, getLicenseKey, setLicenseKey, hasLicenseKey,
   getLicenseEmail, setLicenseEmail, backendAuthHeaders,
 } from '../app/js/config.js';
-import { isLicenseActive, clearLicenseCache } from '../server/lib/licenses.js';
+import { isLicenseActive, clearLicenseCache, hashToken } from '../server/lib/licenses.js';
 import { requireLicense } from '../server/lib/requireLicense.js';
 import { withCors } from '../server/lib/cors.js';
 import { latLngToWorldPoint, zoomForBounds } from '../app/js/map/fallback2d.js';
@@ -523,55 +523,96 @@ test('withCors: 許可オリジン・メソッド・ヘッダーを設定する'
   assert.ok(res.headers['Access-Control-Allow-Headers'].includes('X-Vcycling-License-Key'));
 });
 
-test('isLicenseActive: キーが空なら false（Lemon Squeezy に問い合わせない）', async () => {
+// テスト用の最小 Stripe クライアント。customers.retrieve / subscriptions.list だけ実装する
+function fakeStripe({ metadata = {}, activeSubscriptions = [], onRetrieve, onList } = {}) {
+  return {
+    customers: {
+      retrieve: async (id) => {
+        onRetrieve?.(id);
+        return { id, deleted: false, metadata };
+      },
+    },
+    subscriptions: {
+      list: async (params) => {
+        onList?.(params);
+        return { data: activeSubscriptions };
+      },
+    },
+  };
+}
+
+test('isLicenseActive: キーが空なら false（Stripe に問い合わせない）', async () => {
   let called = false;
-  const active = await isLicenseActive('', { fetchImpl: async () => { called = true; }, now: 0 });
+  const stripeImpl = fakeStripe({ onRetrieve: () => { called = true; } });
+  const active = await isLicenseActive('', { stripeImpl, now: 0 });
   assert.equal(active, false);
   assert.ok(!called);
 });
 
-test('isLicenseActive: valid かつ status=active なら true', async () => {
-  clearLicenseCache();
-  let capturedBody = null;
-  const fetchImpl = async (url, init) => {
-    capturedBody = init.body;
-    return { ok: true, json: async () => ({ valid: true, license_key: { status: 'active' } }) };
-  };
-  assert.equal(await isLicenseActive('LICENSE-1', { fetchImpl, now: 1000 }), true);
-  assert.ok(String(capturedBody).includes('LICENSE-1'));
+test('isLicenseActive: 形式が不正なキーは Stripe に問い合わせず false', async () => {
+  let called = false;
+  const stripeImpl = fakeStripe({ onRetrieve: () => { called = true; } });
+  assert.equal(await isLicenseActive('not-a-valid-key', { stripeImpl, now: 0 }), false);
+  assert.ok(!called);
 });
 
-test('isLicenseActive: status が active 以外なら false', async () => {
+test('isLicenseActive: ハッシュが一致しアクティブなサブスクがあれば true', async () => {
   clearLicenseCache();
-  const fetchImpl = async () => ({ ok: true, json: async () => ({ valid: true, license_key: { status: 'expired' } }) });
-  assert.equal(await isLicenseActive('LICENSE-2', { fetchImpl, now: 2000 }), false);
+  const token = 'ab'.repeat(32);
+  const licenseKey = `vc_cus_TEST1_${token}`;
+  let retrievedId = null;
+  let listParams = null;
+  const stripeImpl = fakeStripe({
+    metadata: { vcycling_key_hash: hashToken(token) },
+    activeSubscriptions: [{ id: 'sub_1' }],
+    onRetrieve: (id) => { retrievedId = id; },
+    onList: (params) => { listParams = params; },
+  });
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now: 1000 }), true);
+  assert.equal(retrievedId, 'cus_TEST1');
+  assert.equal(listParams.customer, 'cus_TEST1');
+  assert.equal(listParams.status, 'active');
 });
 
-test('isLicenseActive: HTTPエラー・fetch例外はどちらも false 扱いにする', async () => {
+test('isLicenseActive: メタデータのハッシュが一致しなければ false', async () => {
   clearLicenseCache();
-  assert.equal(
-    await isLicenseActive('LICENSE-3', { fetchImpl: async () => ({ ok: false }), now: 3000 }),
-    false
-  );
+  const token = 'cd'.repeat(32);
+  const licenseKey = `vc_cus_TEST2_${token}`;
+  const stripeImpl = fakeStripe({ metadata: { vcycling_key_hash: 'wrong-hash' }, activeSubscriptions: [{ id: 'sub_1' }] });
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now: 2000 }), false);
+});
+
+test('isLicenseActive: アクティブなサブスクリプションが無ければ false', async () => {
   clearLicenseCache();
-  assert.equal(
-    await isLicenseActive('LICENSE-3', { fetchImpl: async () => { throw new Error('network down'); }, now: 3000 }),
-    false
-  );
+  const token = 'ef'.repeat(32);
+  const licenseKey = `vc_cus_TEST3_${token}`;
+  const stripeImpl = fakeStripe({ metadata: { vcycling_key_hash: hashToken(token) }, activeSubscriptions: [] });
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now: 3000 }), false);
+});
+
+test('isLicenseActive: Stripe呼び出しの例外は false 扱いにする', async () => {
+  clearLicenseCache();
+  const token = '12'.repeat(32);
+  const licenseKey = `vc_cus_TEST4_${token}`;
+  const stripeImpl = { customers: { retrieve: async () => { throw new Error('network down'); } } };
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now: 4000 }), false);
 });
 
 test('isLicenseActive: 5分以内は再照会せずキャッシュを使う', async () => {
   clearLicenseCache();
   let calls = 0;
-  const fetchImpl = async () => {
-    calls++;
-    return { ok: true, json: async () => ({ valid: true, license_key: { status: 'active' } }) };
-  };
+  const token = '34'.repeat(32);
+  const licenseKey = `vc_cus_TEST5_${token}`;
+  const stripeImpl = fakeStripe({
+    metadata: { vcycling_key_hash: hashToken(token) },
+    activeSubscriptions: [{ id: 'sub_1' }],
+    onRetrieve: () => { calls++; },
+  });
   const now = 10_000;
-  assert.equal(await isLicenseActive('LICENSE-4', { fetchImpl, now }), true);
-  assert.equal(await isLicenseActive('LICENSE-4', { fetchImpl, now: now + 60_000 }), true);
-  assert.equal(calls, 1, 'キャッシュ有効期間内は fetch を呼ばないはず');
-  assert.equal(await isLicenseActive('LICENSE-4', { fetchImpl, now: now + 6 * 60_000 }), true);
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now }), true);
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now: now + 60_000 }), true);
+  assert.equal(calls, 1, 'キャッシュ有効期間内は Stripe に問い合わせないはず');
+  assert.equal(await isLicenseActive(licenseKey, { stripeImpl, now: now + 6 * 60_000 }), true);
   assert.equal(calls, 2, '5分経過後は再照会するはず');
 });
 
@@ -584,28 +625,25 @@ test('requireLicense: ヘッダー無しなら401を返し false になる', asy
 
 test('requireLicense: 無効なライセンスキーなら403を返し false になる', async () => {
   clearLicenseCache();
-  await withMockFetch(
-    async () => ({ ok: true, json: async () => ({ valid: false }) }),
-    async () => {
-      const res = fakeRes();
-      const ok = await requireLicense({ headers: { 'x-vcycling-license-key': 'BAD' } }, res);
-      assert.equal(ok, false);
-      assert.equal(res.statusCode, 403);
-    }
-  );
+  const stripeImpl = fakeStripe({ activeSubscriptions: [] });
+  const res = fakeRes();
+  const ok = await requireLicense({ headers: { 'x-vcycling-license-key': 'BAD' } }, res, { stripeImpl });
+  assert.equal(ok, false);
+  assert.equal(res.statusCode, 403);
 });
 
 test('requireLicense: 有効なライセンスキーなら true を返しレスポンスに触れない', async () => {
   clearLicenseCache();
-  await withMockFetch(
-    async () => ({ ok: true, json: async () => ({ valid: true, license_key: { status: 'active' } }) }),
-    async () => {
-      const res = fakeRes();
-      const ok = await requireLicense({ headers: { 'x-vcycling-license-key': 'GOOD' } }, res);
-      assert.equal(ok, true);
-      assert.equal(res.statusCode, null);
-    }
-  );
+  const token = '56'.repeat(32);
+  const licenseKey = `vc_cus_TEST6_${token}`;
+  const stripeImpl = fakeStripe({
+    metadata: { vcycling_key_hash: hashToken(token) },
+    activeSubscriptions: [{ id: 'sub_1' }],
+  });
+  const res = fakeRes();
+  const ok = await requireLicense({ headers: { 'x-vcycling-license-key': licenseKey } }, res, { stripeImpl });
+  assert.equal(ok, true);
+  assert.equal(res.statusCode, null);
 });
 
 /* ============ 2Dフォールバックの背景地図投影（Web Mercator） ============ */

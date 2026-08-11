@@ -4,5 +4,8 @@
   "type": "module",
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "stripe": "^22.5.0"
   }
 }

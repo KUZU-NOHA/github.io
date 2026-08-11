@@ -16,7 +16,8 @@
 | `api/maps/elevation.js` | Elevation API の代理取得（系統A） |
 | `api/maps/staticmap.js` | Static Maps API の代理取得（系統A、画像バイト列を中継） |
 | `api/maps/key.js` | Maps JavaScript API ローダー用キーの配布（系統B） |
-| `lib/licenses.js` | Lemon Squeezy のライセンスAPIへの照会・キャッシュ |
+| `api/subscribe/complete.js` | Stripe Checkout 完了後、ライセンスキーを発行する |
+| `lib/licenses.js` | Stripe への顧客・サブスクリプション照会・キャッシュ |
 | `lib/requireLicense.js` | 4エンドポイント共通のライセンス確認ミドルウェア |
 | `lib/cors.js` | フロントエンド（別オリジン）からのアクセス許可 |
 
@@ -33,18 +34,24 @@
      予算アラートを必ず設定する
    - `GOOGLE_MAPS_LOADER_KEY`: 系統B用。HTTPリファラ制限を `kuzu-noha.github.io/github.io/*` に設定する
    - 両方とも、有効化するAPIを実際に使うものだけに絞る（API制限）
-2. **Lemon Squeezy でサブスク商品を作成**し、ライセンスキー発行を有効にする（Licensing機能）
-   - ⚠️ `lib/licenses.js` のエンドポイント・レスポンス形状はこのコード作成時点の想定です。
-     デプロイ前に [Lemon Squeezy License API の最新ドキュメント](https://docs.lemonsqueezy.com/help/licensing)
-     と突き合わせて確認してください
+2. **Stripeでサブスク用の商品（Price）を作成**し、**Payment Link** を発行する
+   - Payment Link の「支払い後」設定で、下記URLへリダイレクトするようにしておく
+     （`{CHECKOUT_SESSION_ID}` はStripeが実際のセッションIDに置換して埋め込むプレースホルダー）
+     ```
+     https://kuzu-noha.github.io/github.io/app/?checkout_session_id={CHECKOUT_SESSION_ID}
+     ```
+   - アプリはこのリダイレクトを検知して `api/subscribe/complete.js` を呼び、Stripeの
+     Checkout Session からライセンスキーを自動発行・保存する（`app/js/main.js` の
+     `bindLicenseSetup` 参照）。動作確認が済むまでは Stripe のテストモードで進めて良い
 3. **Vercelで新規プロジェクトを作成**し、このリポジトリを接続する。プロジェクト設定の
    **Root Directory を `server` に設定**する（`app/`側はこれまでどおりGitHub Pagesのまま）
-4. Vercel の Environment Variables に `.env.example` の内容を設定する
+4. Vercel の Environment Variables に `.env.example` の内容を設定する（`STRIPE_SECRET_KEY`
+   はStripeダッシュボードの「開発者」→「APIキー」から取得する）
 5. **Vercel Hobby（無料）プランは商用利用不可**。実際に課金を始める時点で **Pro（$20/月〜）に
    アップグレードする**（実費が発生するので、他の手順が全部終わってから最後に行う）
 6. デプロイ後、`app/js/config.js` の以下2つの定数を実際の値に差し替える
    - `BACKEND_BASE_URL`: この Vercel プロジェクトの実デプロイURL
-   - `SUBSCRIBE_URL`: 手順2で作った Lemon Squeezy 商品のチェックアウトURL
+   - `SUBSCRIBE_URL`: 手順2で作った Stripe Payment Link のURL
 7. `docs/legal/` 配下（特定商取引法に基づく表記・利用規約・プライバシーポリシー）の
    テンプレートに実データ（事業者情報・価格・返金ポリシー等）を埋め、アプリから
    たどれる場所（フッター等）にリンクを追加する。特定商取引法上、価格を確定させずに
@@ -58,8 +65,8 @@ npm install -g vercel   # 未導入の場合
 vercel dev
 ```
 
-Lemon Squeezy の実クレデンシャルが無くても、`lib/licenses.js` の `isLicenseActive` は
-`fetchImpl` を差し替えられる設計になっているため、モックした `fetch` でロジック単体の
-動作確認ができます（`test/unit.mjs` 参照）。実際の決済〜ライセンス発行〜アプリでの
-有効化までの通しテストは、Lemon Squeezy 側の実アカウント（テストモード可）を
+Stripe の実クレデンシャルが無くても、`lib/licenses.js` の `isLicenseActive` は
+`stripeImpl` を差し替えられる設計になっているため、モックしたStripeクライアントで
+ロジック単体の動作確認ができます（`test/unit.mjs` 参照）。実際の決済〜ライセンスキー発行
+〜アプリでの有効化までの通しテストは、Stripe側の実アカウント（テストモード可）を
 用意してから行ってください。

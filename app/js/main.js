@@ -9,6 +9,7 @@ import {
   getApiKey, setApiKey, hasApiKey, loadSettings, saveSettings,
   loadGoogleMaps, DEFAULT_SETTINGS,
   getLicenseKey, setLicenseKey, hasLicenseKey, getLicenseEmail, setLicenseEmail, SUBSCRIBE_URL,
+  completeCheckout,
 } from './config.js';
 import { buildPath } from './map/geo.js';
 import {
@@ -158,16 +159,7 @@ function bindLicenseSetup() {
   const subscribeLink = document.getElementById('subscribe-link');
   if (subscribeLink) subscribeLink.href = SUBSCRIBE_URL;
 
-  document.getElementById('license-key-save').addEventListener('click', async () => {
-    const email = emailInput.value.trim();
-    const key = keyInput.value.trim();
-    if (!key || !email) {
-      toast('メールアドレスとライセンスキーの両方を入力してください', 'warn');
-      return;
-    }
-    setLicenseEmail(email);
-    setLicenseKey(key);
-    toast('ライセンスキーを保存しました。確認しています…');
+  async function verifyAndActivateLicense() {
     try {
       app.mapsReady = false;
       await loadGoogleMaps();
@@ -180,6 +172,19 @@ function bindLicenseSetup() {
       setLicenseStatus(false, err.message);
       toast(err.message, 'error');
     }
+  }
+
+  document.getElementById('license-key-save').addEventListener('click', async () => {
+    const email = emailInput.value.trim();
+    const key = keyInput.value.trim();
+    if (!key || !email) {
+      toast('メールアドレスとライセンスキーの両方を入力してください', 'warn');
+      return;
+    }
+    setLicenseEmail(email);
+    setLicenseKey(key);
+    toast('ライセンスキーを保存しました。確認しています…');
+    await verifyAndActivateLicense();
   });
 
   document.getElementById('license-key-clear').addEventListener('click', () => {
@@ -189,6 +194,25 @@ function bindLicenseSetup() {
     setLicenseStatus(false);
     toast('ライセンスキーを解除しました。');
   });
+
+  // Stripeでの支払い完了後にこのアプリへリダイレクトされた場合、URLの
+  // checkout_session_id を検出して自動でライセンスキーを取得・保存する
+  // （SUBSCRIBE_URL に設定するPayment Linkのリダイレクト先を参照）
+  const checkoutSessionId = new URLSearchParams(location.search).get('checkout_session_id');
+  if (checkoutSessionId) {
+    history.replaceState(null, '', location.pathname);
+    toast('お支払いを確認しています…');
+    completeCheckout(checkoutSessionId).then((ok) => {
+      if (!ok) {
+        toast('お支払いの確認に失敗しました。お手数ですが手動でライセンスキーを入力してください', 'error');
+        return;
+      }
+      emailInput.value = getLicenseEmail();
+      keyInput.value = getLicenseKey();
+      toast('ライセンスキーを取得しました。確認しています…');
+      verifyAndActivateLicense();
+    });
+  }
 }
 
 function setLicenseStatus(ok, message = '') {

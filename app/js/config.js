@@ -27,8 +27,11 @@ const LICENSE_EMAIL_STORAGE = 'vcycling.licenseEmail';
 // Phase B でバックエンド（server/）を実デプロイしたら、実際のURLに差し替える
 export const BACKEND_BASE_URL = 'https://vcycling-backend.vercel.app';
 
-// Phase B で Lemon Squeezy の商品を作成したら、実際のチェックアウトURLに差し替える
-export const SUBSCRIBE_URL = 'https://vcycling.lemonsqueezy.com/buy/subscribe';
+// Phase B で Stripe の Payment Link を作成したら、実際のURLに差し替える。
+// Payment Link の「支払い後」設定で、下記のURLへリダイレクトするようにしておくこと
+// （{CHECKOUT_SESSION_ID} はStripeが実際のセッションIDに置換して埋め込む）:
+//   https://kuzu-noha.github.io/github.io/app/?checkout_session_id={CHECKOUT_SESSION_ID}
+export const SUBSCRIBE_URL = 'https://buy.stripe.com/test_00000000000000';
 
 export const DEFAULT_SETTINGS = {
   weightKg: 70,
@@ -125,6 +128,24 @@ export function backendAuthHeaders() {
   };
 }
 
+/**
+ * Stripe Checkout 完了後のリダイレクトで受け取った session_id を、
+ * バックエンド（/api/subscribe/complete）でライセンスキーに交換する。
+ * 成功すればライセンスキー・メールを保存して true を返す
+ * （呼び出し側は main.js の bindLicenseSetup 参照）。
+ */
+export async function completeCheckout(sessionId) {
+  const res = await fetch(
+    `${BACKEND_BASE_URL}/api/subscribe/complete?session_id=${encodeURIComponent(sessionId)}`
+  );
+  if (!res.ok) return false;
+  const json = await res.json();
+  if (!json.licenseKey) return false;
+  setLicenseKey(json.licenseKey);
+  setLicenseEmail(json.email || '');
+  return true;
+}
+
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE);
@@ -147,7 +168,7 @@ export function saveSettings(settings) {
  * 3D映像用の Maps JavaScript API キーを解決する。
  *
  * ライセンスキー（サブスク）があれば、まずバックエンドの系統Bエンドポイント
- * （/api/maps/key）に照会する。バックエンドは Lemon Squeezy にライセンスの
+ * （/api/maps/key）に照会する。バックエンドは Stripe にサブスクリプションの
  * 有効性を確認したうえで、リファラ制限付きの「ローダー用キー」を返す
  * （実際に日次クォータで守られたキー本体はサーバー側にしか置かれない）。
  * ライセンスキーが無い、またはバックエンドが未デプロイ・不通・無効判定の
