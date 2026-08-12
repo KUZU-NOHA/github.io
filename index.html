@@ -4,117 +4,446 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>バーチャルサイクリング</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚴</text></svg>">
+<meta name="description" content="Bluetoothスマートトレーナーと連携し、Googleマップの実在する景色を漕いだ分だけ進む室内サイクリングアプリ。テスト期間中は無料。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="バーチャルサイクリング — そのトレーナーで、本物の世界を走る">
+<meta property="og:description" content="Bluetoothスマートトレーナーと連携し、Googleマップの実在する景色を漕いだ分だけ進む。坂道はちゃんと重くなる。テスト期間中は無料。">
+<meta property="og:image" content="https://kuzu-noha.github.io/github.io/assets/lp/og-card.png">
+<meta property="og:url" content="https://kuzu-noha.github.io/github.io/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="バーチャルサイクリング — そのトレーナーで、本物の世界を走る">
+<meta name="twitter:description" content="Bluetoothスマートトレーナーと連携し、Googleマップの実在する景色を漕いだ分だけ進む。テスト期間中は無料。">
+<meta name="twitter:image" content="https://kuzu-noha.github.io/github.io/assets/lp/og-card.png">
 <style>
   :root {
-    --bg: #f5f7fa; --surface: #fff; --border: #dde3ea;
-    --text: #1a2233; --muted: #667085; --accent: #0284c7;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0b1220; --surface: #151d2e; --border: #263349;
-      --text: #e6edf7; --muted: #94a3b8; --accent: #38bdf8;
-    }
+    --ink: #12151c;
+    --ink-soft: #2a3040;
+    --paper: #f2f4f7;
+    --surface: #ffffff;
+    --orange: #ff6a3d;
+    --orange-deep: #e8531f;
+    --route: #5f8fc7;
+    --mute: #667085;
+    --line: #dde2e9;
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    margin: 0; padding: 3rem 1.25rem 5rem;
-    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
-    background: var(--bg); color: var(--text); line-height: 1.7;
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic Medium", "Noto Sans JP", -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 1.9rem; margin: 0 0 .4rem; }
-  .lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 2rem; }
+  .num {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  img { max-width: 100%; display: block; }
+  a { color: inherit; }
+  section { padding: 0 1.5rem; }
+  .inner { max-width: 960px; margin: 0 auto; }
+  .narrow { max-width: 640px; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    background: linear-gradient(180deg, #0b0d12 0%, var(--ink) 55%, var(--ink) 100%);
+    color: #f4f2ee;
+    padding: clamp(3rem, 8vw, 6rem) 1.5rem 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero .inner {
+    display: grid;
+    gap: 2.5rem;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Roboto Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    color: #ffb59a;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 1.4rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--orange);
+    box-shadow: 0 0 0 4px rgba(255,106,61,0.22);
+  }
+  .hero h1 {
+    font-size: clamp(2.1rem, 5.4vw, 3.6rem);
+    line-height: 1.28;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin: 0 0 1.2rem;
+    text-wrap: balance;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--orange);
+  }
+  .hero .lead {
+    font-size: clamp(1rem, 1.6vw, 1.15rem);
+    color: #c9cdd6;
+    max-width: 34em;
+    margin: 0 0 2rem;
+  }
+  .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1.4rem; margin-bottom: 1.6rem; }
   .cta {
-    display: inline-block; background: var(--accent); color: #fff;
-    padding: .8rem 1.8rem; border-radius: 10px; font-weight: 600;
-    text-decoration: none; font-size: 1.05rem;
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: var(--orange); color: #1a0e08;
+    font-weight: 700; font-size: 1.02rem;
+    padding: 0.95rem 1.8rem; border-radius: 6px;
+    text-decoration: none;
+    box-shadow: 0 10px 24px -8px rgba(255,106,61,0.55);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
-  .cta:hover { filter: brightness(1.1); }
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 1.2rem 1.4rem; margin: 1rem 0;
+  .cta:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -8px rgba(255,106,61,0.65); }
+  .cta-ghost {
+    font-size: 0.92rem; font-weight: 600; color: #c9cdd6;
+    text-decoration: none; border-bottom: 1px solid #4a4f5c;
+    padding-bottom: 2px;
   }
-  h2 { font-size: 1.15rem; margin: 2.2rem 0 .6rem; }
-  ul { padding-left: 1.3rem; margin: .5rem 0; }
-  li { margin: .3rem 0; }
-  code {
-    background: var(--bg); border: 1px solid var(--border);
-    padding: .1rem .4rem; border-radius: 4px; font-size: .88em;
+  .cta-ghost:hover { color: #f4f2ee; border-color: #8b93a3; }
+  .cta-note { font-size: 0.86rem; color: #8b93a3; }
+  .req-note {
+    font-size: 0.86rem; line-height: 1.7; color: #aab0bd;
+    background: rgba(255,106,61,0.08); border: 1px solid rgba(255,106,61,0.25);
+    border-radius: 8px; padding: 0.9rem 1.1rem; max-width: 34em; margin-bottom: 2.4rem;
   }
-  a { color: var(--accent); }
-  .warn { border-left: 4px solid #d97706; }
-  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin: .6rem 0; }
-  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 600; }
-  footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; }
+  .req-note strong { color: #f4f2ee; }
+  .req-note a { color: var(--orange); text-decoration: none; }
+  .req-note a:hover { text-decoration: underline; }
+  .hero-shot {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #2a2f3b;
+    box-shadow: 0 30px 70px -30px rgba(0,0,0,0.75);
+  }
+  .hero-shot img { width: 100%; }
+  .hero-caption {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 0.74rem; color: #6b7280; letter-spacing: 0.04em;
+    padding: 0.7rem 0.2rem 3.2rem;
+  }
+
+  /* elevation-profile divider, echoes the in-app chart */
+  .divider { width: 100%; height: 46px; display: block; }
+
+  /* ---------- Stat strip ---------- */
+  .stats {
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .stats .inner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0;
+  }
+  .stat {
+    padding: 2.2rem 1rem;
+    text-align: center;
+    border-left: 1px solid var(--line);
+  }
+  .stat:first-child { border-left: none; }
+  .stat .v {
+    font-size: clamp(1.7rem, 3vw, 2.3rem);
+    font-weight: 700;
+    color: var(--orange-deep);
+  }
+  .stat .v .unit { font-size: 0.55em; font-weight: 600; color: var(--mute); margin-left: 0.15em; }
+  .stat .l { font-size: 0.82rem; color: var(--mute); margin-top: 0.4rem; }
+
+  /* ---------- Generic content sections ---------- */
+  .section { padding: clamp(4rem, 9vw, 6.5rem) 1.5rem; }
+  .kicker {
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 0.76rem; letter-spacing: 0.1em; color: var(--route);
+    margin: 0 0 0.8rem;
+  }
+  h2 {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 800; margin: 0 0 1rem; letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .section p.body-lead {
+    color: var(--ink-soft); font-size: 1.04rem; max-width: 40em;
+  }
+
+  .problem { background: var(--ink); color: #eceef2; }
+  .problem .kicker { color: #ffb59a; }
+  .problem h2 { color: #fff; }
+  .problem p.body-lead { color: #b7bdc9; }
+  .problem-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1px; background: #262b36; margin-top: 2.4rem;
+    border: 1px solid #262b36; border-radius: 10px; overflow: hidden;
+  }
+  .problem-card { background: #171b24; padding: 1.6rem 1.5rem; }
+  .problem-card .mark { color: var(--orange); font-family: ui-monospace, monospace; font-size: 0.85rem; }
+  .problem-card p { color: #aab0bd; font-size: 0.95rem; margin: 0.6rem 0 0; }
+  .problem-card strong { display: block; color: #f2f3f6; font-size: 1.02rem; margin-top: 0.3rem; }
+
+  /* ---------- Feature rows (screenshot + copy) ---------- */
+  .feature {
+    display: grid; gap: 2.4rem; align-items: center;
+    grid-template-columns: 1.05fr 0.95fr;
+    padding: clamp(3rem, 7vw, 4.5rem) 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .feature:last-child { border-bottom: none; }
+  .feature.reverse .shot { order: 2; }
+  .feature.reverse .copy { order: 1; }
+  .feature .shot {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden; box-shadow: 0 20px 40px -28px rgba(18,21,28,0.35);
+  }
+  .feature .shot img { width: 100%; }
+  .feature .copy .kicker { color: var(--orange-deep); }
+  .feature ul { list-style: none; margin: 1.3rem 0 0; padding: 0; display: grid; gap: 0.7rem; }
+  .feature li {
+    display: flex; gap: 0.7rem; align-items: baseline;
+    color: var(--ink-soft); font-size: 0.98rem;
+  }
+  .feature li::before {
+    content: "―"; color: var(--route); font-weight: 700; flex: none;
+  }
+  .shot-note {
+    font-size: 0.82rem; color: var(--mute); margin: 1.1rem 0 0;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+
+  /* ---------- Try free strip ---------- */
+  .tryfree {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: clamp(2rem, 5vw, 3rem); margin: 0 auto;
+    display: grid; gap: 1.6rem; grid-template-columns: 1.3fr auto; align-items: center;
+  }
+  .tryfree h3 { margin: 0 0 0.5rem; font-size: 1.3rem; }
+  .tryfree p { margin: 0; color: var(--mute); font-size: 0.96rem; max-width: 34em; }
+  .tryfree .cta { background: var(--ink); color: #fff; box-shadow: none; white-space: nowrap; }
+  .tryfree .cta:hover { background: #24283a; transform: none; }
+
+  /* ---------- FAQ ---------- */
+  .faq { scroll-margin-top: 1.5rem; }
+  .faq-list { margin: 2.2rem 0 0; display: grid; gap: 1.6rem; }
+  .faq-item {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.3rem 1.5rem;
+  }
+  .faq-item dt {
+    font-weight: 700; font-size: 1rem; margin: 0 0 0.5rem;
+    display: flex; gap: 0.6rem;
+  }
+  .faq-item dt::before { content: "Q"; color: var(--orange-deep); font-family: ui-monospace, monospace; }
+  .faq-item dd {
+    margin: 0; color: var(--ink-soft); font-size: 0.95rem; line-height: 1.75;
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    padding: 3rem 1.5rem 4rem; text-align: center;
+    color: var(--mute); font-size: 0.85rem;
+  }
+  footer a { color: var(--route); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 760px) {
+    .hero .inner { gap: 1.8rem; }
+    .stats .inner { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-child(odd) { border-left: none; }
+    .stat:nth-child(-n+2) { border-top: none; }
+    .stat { border-top: 1px solid var(--line); }
+    .feature, .feature.reverse { grid-template-columns: 1fr; }
+    .feature.reverse .shot, .feature.reverse .copy { order: unset; }
+    .tryfree { grid-template-columns: 1fr; text-align: center; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .cta { transition: none; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <h1>🚴 バーチャルサイクリング</h1>
-  <p class="lead">
-    Google マップの 3D 地図の中を、自分が漕いだぶんだけ進む。
-    Bluetooth スマートトレーナーと連携し、坂道では実際にペダルが重くなります。
-    ダイエットの継続を支えるための室内サイクリングアプリです。
-  </p>
 
-  <p><a class="cta" href="app/">アプリを開く →</a></p>
-
-  <div class="card warn">
-    <strong>⚠️ 動作環境</strong>
-    <p style="margin:.4rem 0 0">
-      Bluetooth 接続には <strong>PC / Mac の Chrome</strong> が必要です。
-      iOS の Safari と iOS 版 Chrome は Web Bluetooth に対応していないため、
-      iPhone では App Store の <strong>WebBLE</strong> ブラウザからお使いください。
-      機材が無くても<strong>シミュレーターモード</strong>で全機能を試せます。
-    </p>
+<div class="hero">
+  <div class="inner">
+    <div>
+      <p class="eyebrow">SMART TRAINER OWNERS · テスト期間中は無料</p>
+      <h1>そのトレーナーで、<em>本物の世界</em>を走る。</h1>
+      <p class="lead">
+        月額のかかる既存アプリに疑問を感じて、自分で作りました。
+        Bluetooth FTMS 対応のスマートトレーナーと連携し、Google マップの実在する景色を、
+        自分が漕いだ距離だけ進む。坂道に差しかかれば、ペダルはちゃんと重くなります。
+      </p>
+      <div class="cta-row">
+        <a class="cta" href="app/">今すぐ無料で試す →</a>
+        <a class="cta-ghost" href="#faq">動作環境・料金を先に見る ↓</a>
+      </div>
+      <div class="req-note">
+        <strong>動作環境</strong>：Bluetooth接続には <strong>PC・Mac の Chrome</strong> が必要です。
+        iPhoneではSafari・Chromeどちらも非対応のため、App Storeの
+        <strong>WebBLE</strong>アプリからお使いください（<a href="#faq">詳しく →</a>）。
+        機材が無くてもシミュレーターで体験できます。
+      </div>
+    </div>
+    <div>
+      <div class="hero-shot">
+        <img src="assets/lp/hero-3d-tokyo.png" alt="東京駅を再現したフォトリアルな3D映像。実在する駅舎とビル群が写り、左下に速度・パワー・ケイデンス・心拍のHUDが重なる">
+      </div>
+      <div class="hero-caption">
+        <span>東京駅 — フォトリアル3D映像（実機画面）</span>
+        <span>要APIキー</span>
+      </div>
+    </div>
   </div>
-
-  <h2>できること</h2>
-  <ul>
-    <li>フォトリアルな 3D 地図の中を走る（実質無料で使えるセッション課金）</li>
-    <li>スマートトレーナー(FTMS)から速度・ケイデンス・パワー・心拍を取得</li>
-    <li>ルートの標高から勾配を計算し、トレーナーの負荷へ反映</li>
-    <li>消費カロリーの算出（パワー計があれば実測ベース、無ければ METs 推定）</li>
-    <li>体重推移・週間カロリー・連続日数の記録</li>
-    <li>プリセットルート / GPX インポート / 地点指定でのルート生成</li>
-  </ul>
-
-  <h2>使いはじめる</h2>
-  <ol>
-    <li>Google Cloud で API キーを発行し、<strong>Maps JavaScript API / Map Tiles API / Routes API / Elevation API</strong> を有効化</li>
-    <li>キーに <strong>HTTP リファラ制限・API 種別制限・日次クォータ上限・予算アラート</strong>を設定</li>
-    <li>アプリの設定画面でキーを入力（キーはこの端末のブラウザにのみ保存されます）</li>
-  </ol>
-  <p class="lead" style="font-size:.92rem">
-    キーが無くても 2D 表示モードで動作するので、まず触ってみることができます。
-  </p>
-
-  <h2>1回30分走ったときの API コスト</h2>
-  <table>
-    <tr><th>方式</th><th>課金単位</th><th>実コスト</th></tr>
-    <tr><td>フォトリアル 3D タイル</td><td>セッション(3時間)</td><td><strong>約0.9円</strong></td></tr>
-    <tr><td>ストリートビュー</td><td>パノラマ1枚ごと</td><td>約2,100円</td></tr>
-  </table>
-  <p class="lead" style="font-size:.92rem">
-    このアプリは 3D タイルを主軸に据え、ストリートビューは「見回す」ボタンと
-    1km ごとのチェックポイントに限定しています。月1,000セッションの無料枠があるため、
-    毎日乗っても実質無料の範囲に収まります。
-  </p>
-
-  <h2>ドキュメント</h2>
-  <p>
-    <a href="docs/virtual-cycling-requirements.md">要件定義書</a> —
-    実現可否の技術的判断、BLE の GATT 仕様、コスト設計、利用規約上の制約、
-    リスクと対策、開発フェーズ計画。
-  </p>
-
-  <footer>
-    地図データ © Google — 本アプリは Google Maps Platform を利用しています。
-  </footer>
-
+  <svg class="divider" viewBox="0 0 1200 46" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,30 L60,30 L90,12 L130,38 L180,20 L230,30 L300,8 L360,32 L420,24 L480,34 L560,10 L640,28 L720,16 L800,30 L880,20 L960,32 L1040,14 L1120,26 L1200,20 L1200,46 L0,46 Z" fill="var(--paper)"/>
+  </svg>
 </div>
+
+<div class="stats">
+  <div class="inner">
+    <div class="stat"><div class="v num">9.7<span class="unit">km</span></div><div class="l">皇居・東京タワー周遊コース</div></div>
+    <div class="stat"><div class="v num">0.9<span class="unit">円</span></div><div class="l">30分ライドの実コスト</div></div>
+    <div class="stat"><div class="v num">&#8734;</div><div class="l">GPXインポート・地点指定で、どこでも</div></div>
+    <div class="stat"><div class="v num">0<span class="unit">円</span></div><div class="l">テスト期間中は無料</div></div>
+  </div>
+</div>
+
+<div class="problem">
+  <div class="inner section">
+    <p class="kicker">WHY IT'S SITTING UNUSED</p>
+    <h2>トレーナーを買ったのに、続かない理由。</h2>
+    <p class="body-lead">
+      同じ壁を見ながら漕ぎ続けるのは、単純に退屈だからです。
+      その退屈を解決してくれる本格的なアプリほど、お試しには重い月額がかかります。
+    </p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <span class="mark">01</span>
+        <p><strong>景色が動かない</strong>ジムの壁や自室の景色は、10分で飽きます。</p>
+      </div>
+      <div class="problem-card">
+        <span class="mark">02</span>
+        <p><strong>ちゃんとしたアプリは高い</strong>没入感のある既存アプリは、月々2,000円前後が相場。試しに使うには少し重い。</p>
+      </div>
+      <div class="problem-card">
+        <span class="mark">03</span>
+        <p><strong>記録が続かない</strong>やった感が数字に残らないと、次の一歩が重くなる。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="inner">
+
+    <div class="feature">
+      <div class="shot">
+        <img src="assets/lp/route-select.png" alt="ルート選択画面。皇居・東京タワー、大阪城、ゴールデンゲートブリッジ、パリ セーヌ川などのプリセットルートが一覧表示されている">
+      </div>
+      <div class="copy">
+        <p class="kicker">WHERE TO RIDE</p>
+        <h2>好きな街を、好きなだけ走る。</h2>
+        <p class="body-lead">同梱のプリセットは実際に記録・計画されたGPXなので、APIキーが無くても正確な道と標高で走れます。</p>
+        <ul>
+          <li>東京・大阪・サンフランシスコ・パリなど、同梱プリセットから選ぶ</li>
+          <li>手持ちの GPX ファイルをそのままインポート</li>
+          <li>地図上で地点を指定して、その場でルート生成</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature reverse">
+      <div class="shot">
+        <img src="assets/lp/hud.png" alt="全画面表示のHUD。速度・パワー・ケイデンス・心拍が大きな数字で表示され、走行ルートと標高プロファイルが見える">
+      </div>
+      <div class="copy">
+        <p class="kicker">WHAT YOU SEE</p>
+        <h2>今の自分が、数字でそのまま見える。</h2>
+        <p class="body-lead">スマートトレーナーから速度・ケイデンス・パワー・心拍を取得。標高から勾配を計算し、坂道はトレーナーの負荷に反映されます。</p>
+        <ul>
+          <li>坂道では実際にペダルが重くなる（勾配連動）</li>
+          <li>消費カロリーはパワー計があれば実測ベースで算出</li>
+          <li>お気に入りルートは、自己ベストとの前回比が出る</li>
+        </ul>
+        <p class="shot-note">※ 画面の数値は、機材なしで試せるシミュレーター機能によるものです</p>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="shot">
+        <img src="assets/lp/dashboard.png" alt="記録画面。今週の消費カロリー、直近30日、連続日数、累計距離のカードと、心拍ゾーン・体重記録が並ぶ">
+      </div>
+      <div class="copy">
+        <p class="kicker">WHAT KEEPS YOU GOING</p>
+        <h2>「続いている」が、目に見える。</h2>
+        <p class="body-lead">週間の消費カロリー、直近30日、連続日数、心拍ゾーン滞在時間。積み上がっていく記録が、次に漕ぐ理由になります。</p>
+        <ul>
+          <li>体重を4回以上記録すると、目標達成予測日が出る</li>
+          <li>心拍ゾーン（脂肪燃焼帯）の滞在時間を可視化</li>
+          <li>記録は CSV / JSON でいつでも書き出し・全削除できる</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="padding-top:0;">
+  <div class="inner">
+    <div class="tryfree">
+      <div>
+        <h3>スマートトレーナーが無くても、まず試せます。</h3>
+        <p>擬似出力スライダーで動くシミュレーターモードを内蔵。機材の有無にかかわらず、その場で3分あれば体験できます。</p>
+      </div>
+      <a class="cta" href="app/">シミュレーターで試す →</a>
+    </div>
+  </div>
+</div>
+
+<div class="section faq" id="faq">
+  <div class="inner narrow">
+    <p class="kicker">BEFORE YOU START</p>
+    <h2>よくある質問</h2>
+    <dl class="faq-list">
+      <div class="faq-item">
+        <dt>iPhoneでも使えますか？</dt>
+        <dd>Web BluetoothはiPhoneのSafari・Chromeどちらも非対応です。App Storeの「WebBLE」という専用ブラウザ（有料）経由なら接続できますが、実機での動作は確認しきれていません。まずは<strong>PC・MacのChrome</strong>での利用をおすすめします。</dd>
+      </div>
+      <div class="faq-item">
+        <dt>どんなスマートトレーナーに対応していますか？</dt>
+        <dd>FTMS・Cycling Power・CSCのいずれかのBluetoothサービスを持つ機種に対応しています。心拍サービスしか広告しない一体型エアロバイクも、接続後に中身を調べて拾えるようにしています。機材が無くてもシミュレーターモードで試せます。</dd>
+      </div>
+      <div class="faq-item">
+        <dt>「テスト期間中は無料」は、いつまでですか？</dt>
+        <dd>自分のGoogleアカウントでAPIキーを発行して使う方法（BYOK）は、<strong>今後も無期限で無料</strong>です。それ以外の便利機能も、今は検証期間として全て無料で開放しています。将来的に一部を有料化する可能性はありますが、その場合も今の無料の使い方自体は変わりません。</dd>
+      </div>
+      <div class="faq-item">
+        <dt>APIキーや走行データはどこかに送信されますか？</dt>
+        <dd>入力したAPIキーは、この端末のブラウザ内にのみ保存され、外部には送信されません。体重や走行記録も同様に、ブラウザの外に出ることはありません。</dd>
+      </div>
+      <div class="faq-item">
+        <dt>個人開発ですか？</dt>
+        <dd>はい、個人で開発しています。既存アプリの月額料金に疑問を感じたのがきっかけです。感想・不具合報告はSNSでのコメントや引用で教えてもらえると助かります。</dd>
+      </div>
+    </dl>
+  </div>
+</div>
+
+<footer>
+  <p>地図データ © Google — 本アプリは Google Maps Platform を利用しています。</p>
+  <p><a href="app/">アプリを開く</a> ・ <a href="docs/virtual-cycling-requirements.md">要件定義書</a></p>
+</footer>
+
 </body>
 </html>
