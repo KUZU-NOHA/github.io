@@ -22,6 +22,11 @@ export const RideState = {
   FINISHED: 'finished',
 };
 
+// 心拍計からこの秒数以上新しいデータが来なければ「外れた」とみなし 0 に戻す。
+// 胸ベルト等は接触が切れても gattserverdisconnected が飛ばず、単に notify が
+// 止まるだけのことが多いため、値を古いまま表示し続けてしまうのを防ぐ。
+const HR_STALE_SEC = 4;
+
 export class RideEngine extends EventTarget {
   /**
    * @param {object} opts
@@ -79,6 +84,7 @@ export class RideEngine extends EventTarget {
     this.ghostDeltaSec = null; // 正=ゴーストより遅れている、負=先行
 
     this.live = { speedKmh: 0, cadenceRpm: 0, powerW: 0, heartRateBpm: 0 };
+    this._lastHrAt = 0;
     this.calories = new CalorieAccumulator({ weightKg });
 
     this.maxSpeedKmh = 0;
@@ -165,7 +171,17 @@ export class RideEngine extends EventTarget {
     if (Number.isFinite(d.speedKmh)) this.live.speedKmh = d.speedKmh;
     if (Number.isFinite(d.cadenceRpm)) this.live.cadenceRpm = d.cadenceRpm;
     if (Number.isFinite(d.powerW)) this.live.powerW = d.powerW;
-    if (Number.isFinite(d.heartRateBpm)) this.live.heartRateBpm = d.heartRateBpm;
+    if (Number.isFinite(d.heartRateBpm)) this.setHeartRate(d.heartRateBpm);
+  }
+
+  /**
+   * 心拍値を反映する。心拍計はトレーナー（source）とは別の BLE デバイスとして
+   * 独立に接続できるため、main.js から直接呼ばれる経路もある。
+   * ステイル判定（HR_STALE_SEC）の基準時刻もここで更新する。
+   */
+  setHeartRate(bpm) {
+    this.live.heartRateBpm = bpm;
+    this._lastHrAt = this.elapsedSec;
   }
 
   _loop() {
@@ -187,6 +203,12 @@ export class RideEngine extends EventTarget {
   advance(dtSec) {
     if (dtSec <= 0) return;
     this.elapsedSec += dtSec;
+
+    // 心拍データが一定時間途絶えたら、外れた/電源offとみなして 0 に戻す
+    // （HUD側は heartRateBpm > 0 かどうかで「--」表示に切り替える）
+    if (this.live.heartRateBpm > 0 && this.elapsedSec - this._lastHrAt > HR_STALE_SEC) {
+      this.live.heartRateBpm = 0;
+    }
 
     // 距離の積算（映像速度の倍率を掛ける）。
     // 表示速度にも同じ倍率を掛けるので、速度計と景色の進みが一致する。

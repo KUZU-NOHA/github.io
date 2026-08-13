@@ -654,7 +654,12 @@ function bindRideScreen() {
       await hr.connect();
       app.heartRate = hr;
       hr.addEventListener('data', (e) => {
-        if (app.engine) app.engine.live.heartRateBpm = e.detail.heartRateBpm;
+        app.engine?.setHeartRate(e.detail.heartRateBpm);
+      });
+      // 電源off等の明示的な切断はステイル判定（数秒後に0化）を待たず即座に反映する
+      hr.addEventListener('disconnected', () => {
+        app.engine?.setHeartRate(0);
+        toast('心拍計が切断されました', 'warn');
       });
       toast(`${hr.name} に接続しました`, 'ok');
     } catch (err) {
