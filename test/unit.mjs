@@ -37,6 +37,7 @@ import { expandToPathPoints, fetchRoute, PRESET_ROUTES } from '../app/js/map/rou
 import { setApiKey } from '../app/js/config.js';
 import { latLngToWorldPoint, zoomForBounds } from '../app/js/map/fallback2d.js';
 import { RideEngine } from '../app/js/ride/engine.js';
+import { gradeColor } from '../app/js/ui/hud.js';
 import {
   currentStreak, kcalWithin, zoneTotals, predictGoalDate, sessionsToCsv,
   routeKeyFor, bestGhostFor,
@@ -924,6 +925,34 @@ test('CalorieAccumulator: パワーが来たら推定から実測へ切り替わ
   assert.equal(acc.kj, 12);
 });
 
+/* ============ HUD（標高プロファイルの勾配色分け） ============ */
+
+test('gradeColor: 下り区間（-3%以下）は青', () => {
+  assert.equal(gradeColor(-10), '#38bdf8');
+  assert.equal(gradeColor(-3), '#38bdf8'); // 境界値は下り側
+});
+
+test('gradeColor: 平坦（-3%超〜2%未満）はグレー', () => {
+  assert.equal(gradeColor(-2.9), '#94a3b8');
+  assert.equal(gradeColor(0), '#94a3b8');
+  assert.equal(gradeColor(1.9), '#94a3b8');
+});
+
+test('gradeColor: 中程度の登り（2%〜5%未満）は黄色', () => {
+  assert.equal(gradeColor(2), '#facc15'); // 境界値は登り側
+  assert.equal(gradeColor(4.9), '#facc15');
+});
+
+test('gradeColor: 急な登り（5%〜8%未満）はオレンジ', () => {
+  assert.equal(gradeColor(5), '#fb923c'); // 境界値は急坂側
+  assert.equal(gradeColor(7.9), '#fb923c');
+});
+
+test('gradeColor: 激坂（8%以上）は赤', () => {
+  assert.equal(gradeColor(8), '#f87171'); // 境界値は激坂側
+  assert.equal(gradeColor(20), '#f87171');
+});
+
 /* ============ 走行エンジン ============ */
 
 function makeStubSource() {
@@ -1091,11 +1120,71 @@ test('RideEngine: 心拍ゾーンの滞在時間を積算する', () => {
   const engine = new RideEngine({
     path, source: makeStubSource(), elevations: [], age: 40,
   });
-  engine.live.heartRateBpm = 117; // Z2
   engine.live.speedKmh = 20;
-  engine.advance(10);
+  // 実機は約1Hzで通知する。ステイル判定（4秒）に触れないよう1秒刻みで受信し続ける
+  for (let i = 0; i < 10; i++) {
+    engine.setHeartRate(117); // Z2
+    engine.advance(1);
+  }
   assert.ok(Math.abs(engine.zoneSeconds.z2 - 10) < 0.001);
   assert.equal(engine.zoneSeconds.z4, 0);
+});
+
+test('RideEngine: 心拍データが4秒以上途絶えると0に戻る', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+
+  engine._handleData({ heartRateBpm: 140 });
+  assert.equal(engine.live.heartRateBpm, 140);
+
+  engine.advance(2);
+  assert.equal(engine.live.heartRateBpm, 140, 'しきい値未満ではまだ保持する');
+
+  engine.advance(3); // 合計5秒経過
+  assert.equal(engine.live.heartRateBpm, 0, '4秒を超えたら0に戻す');
+});
+
+test('RideEngine: 心拍データが継続していれば0に戻らない', () => {
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+
+  engine._handleData({ heartRateBpm: 140 });
+  engine.advance(3);
+  engine._handleData({ heartRateBpm: 142 }); // しきい値内に再受信
+  engine.advance(3);
+  assert.equal(engine.live.heartRateBpm, 142);
+});
+
+test('RideEngine: setHeartRate（心拍計単体接続の経路）でもステイル判定が効く', () => {
+  // main.js は心拍計をトレーナーとは別デバイスとして接続し、
+  // source の 'data' イベント（_handleData）を経由せず setHeartRate() を直接呼ぶ。
+  // この経路でも _lastHrAt が更新されないと、接続直後に固まって見える不具合になる。
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+
+  engine.setHeartRate(150);
+  engine.advance(3);
+  engine.setHeartRate(148); // しきい値内に再受信し続ける限り保持される
+  engine.advance(3);
+  assert.equal(engine.live.heartRateBpm, 148, '定期的に受信していれば0に戻らない');
+
+  engine.advance(5); // 直近の setHeartRate から5秒（>4秒）経過
+  assert.equal(engine.live.heartRateBpm, 0, '受信が途絶えたら0に戻す');
+});
+
+test('RideEngine: 心拍計の切断（gattserverdisconnected）は即座に0にできる', () => {
+  // main.js は HeartRateMonitor の 'disconnected' イベントで setHeartRate(0) を呼び、
+  // ステイル判定の数秒を待たず即座に反映する。setHeartRate はどんな値も受け付ける。
+  const path = buildPath([{ lat: 35, lng: 139 }, { lat: 36, lng: 139 }]);
+  const engine = new RideEngine({ path, source: makeStubSource(), elevations: [] });
+
+  engine.setHeartRate(150);
+  engine.advance(1);
+  engine.setHeartRate(0); // 切断時に main.js から呼ばれる
+  assert.equal(engine.live.heartRateBpm, 0);
+
+  engine.advance(1); // 切断直後は0のまま安定している（ステイル判定の対象外）
+  assert.equal(engine.live.heartRateBpm, 0);
 });
 
 test('RideEngine: 平均値と要約を算出する', () => {

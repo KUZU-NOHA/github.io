@@ -258,10 +258,13 @@ try {
   check('2回目でも経過時間が進む', second.time !== '00:00', second.time);
 
   // プリセットは GPX 埋め込みの標高データを持つため、API キー無しでも
-  // 標高プロファイルが描画されるはず
+  // 標高プロファイルが描画されるはず（勾配で色分けした line 要素が複数本＋
+  // 塗りつぶし用 polygon が描かれる。カーソル用の line 1本だけでは不十分）
   const profileHtml = await page.locator('#elevation-profile').innerHTML();
+  const profileLineCount = (profileHtml.match(/<line /g) || []).length;
   check('2回目でも標高プロファイルが更新される（GPX埋め込み標高）',
-    profileHtml.includes('polyline'), profileHtml.trim() === '' ? '空だった' : '描画あり');
+    profileHtml.includes('polygon') && profileLineCount > 1,
+    profileHtml.trim() === '' ? '空だった' : `line要素 ${profileLineCount}件`);
 
   if (fullscreenSupported) {
     // F キーのショートカットでも切り替えられることを確認

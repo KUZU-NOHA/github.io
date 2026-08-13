@@ -125,6 +125,18 @@ export function formatGrade(grade) {
 /**
  * 標高プロファイルを SVG で描き、現在位置を示す（要件定義書 F-207）。
  */
+/**
+ * 区間の勾配[%]から色を決める。他社アプリの勾配表示（登り区間ほど暖色）に
+ * 寄せた5段階。HUDの is-climb/is-descent（急坂の色）と揃えている。
+ */
+export function gradeColor(grade) {
+  if (grade <= -3) return '#38bdf8'; // 下り
+  if (grade < 2) return '#94a3b8'; // 平坦
+  if (grade < 5) return '#facc15'; // 中程度の登り
+  if (grade < 8) return '#fb923c'; // 急な登り
+  return '#f87171'; // 激坂
+}
+
 export function renderElevationProfile(svg, path, elevations, progress) {
   if (!svg || !elevations || elevations.length < 2) return;
   const w = 100;
@@ -132,23 +144,30 @@ export function renderElevationProfile(svg, path, elevations, progress) {
   const min = Math.min(...elevations);
   const max = Math.max(...elevations);
   const span = Math.max(1, max - min);
+  const segCount = elevations.length - 1;
+  const segDistanceM = path.totalDistanceM > 0 ? path.totalDistanceM / segCount : 0;
 
-  const points = elevations
-    .map((e, i) => {
-      const x = (i / (elevations.length - 1)) * w;
-      const y = h - ((e - min) / span) * h * 0.85 - h * 0.08;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
+  const points = elevations.map((e, i) => ({
+    x: (i / segCount) * w,
+    y: h - ((e - min) / span) * h * 0.85 - h * 0.08,
+  }));
 
+  const pointsAttr = points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
   const cursorX = (progress * w).toFixed(2);
+
+  // 勾配で色分けした短い線分をつなげて描く（単色ポリラインだと坂の場所が
+  // 分からないため、登り/下りが一目で分かるように区間ごとに色を変える）
+  let segments = '';
+  for (let i = 0; i < points.length - 1; i++) {
+    const grade = segDistanceM > 0 ? ((elevations[i + 1] - elevations[i]) / segDistanceM) * 100 : 0;
+    segments += `<line x1="${points[i].x.toFixed(2)}" y1="${points[i].y.toFixed(2)}" x2="${points[i + 1].x.toFixed(2)}" y2="${points[i + 1].y.toFixed(2)}" stroke="${gradeColor(grade)}" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke" />`;
+  }
 
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.innerHTML = `
-    <polygon points="0,${h} ${points} ${w},${h}" fill="rgba(56,189,248,0.22)" />
-    <polyline points="${points}" fill="none" stroke="#38bdf8" stroke-width="1.2"
-              vector-effect="non-scaling-stroke" />
+    <polygon points="0,${h} ${pointsAttr} ${w},${h}" fill="rgba(148,163,184,0.14)" />
+    ${segments}
     <line x1="${cursorX}" y1="0" x2="${cursorX}" y2="${h}" stroke="#f97316"
           stroke-width="1.5" vector-effect="non-scaling-stroke" />
   `;
