@@ -62,6 +62,30 @@ export const PRESET_ROUTES = [
     loop: false,
     gpxUrl: 'routes/oga-peninsula.gpx',
   },
+  {
+    id: 'nihonbashi-shinagawa',
+    name: '日本橋・品川',
+    description: '日本橋から品川方面へ走るコース（約7.9km）',
+    city: '東京',
+    loop: false,
+    gpxUrl: 'routes/nihonbashi-shinagawa.gpx',
+  },
+  {
+    id: 'shibuya-aoyama',
+    name: '渋谷・青山',
+    description: '渋谷・青山エリアを周回するコース（約8.0km）',
+    city: '東京',
+    loop: true,
+    gpxUrl: 'routes/shibuya-aoyama.gpx',
+  },
+  {
+    id: 'yaesu-kokyo-loop',
+    name: '八重洲口・皇居一周',
+    description: '八重洲口から皇居の周りを一周するコース（約7.0km）',
+    city: '東京',
+    loop: true,
+    gpxUrl: 'routes/yaesu-kokyo-loop.gpx',
+  },
 ];
 
 /**
