@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ドローンショー デザイナー</title>
+<meta name="description" content="3Dで隊列とアニメーションを設計し、各機の飛行経路（時刻・XYZ座標・LED色）をCSV/JSONに書き出すツール">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <h1>ドローンショー デザイナー</h1>
+    <span class="sub" id="showSummary">—</span>
+    <span class="spacer"></span>
+    <div class="chips">
+      <button class="chip" data-view="audience">観客視点</button>
+      <button class="chip" data-view="diagonal">斜め</button>
+      <button class="chip" data-view="top">真上</button>
+    </div>
+    <div class="chips">
+      <button class="chip" id="toggleTrails">軌跡</button>
+      <button class="chip" id="toggleGrid">地面</button>
+      <button class="chip" id="toggleFence">ジオフェンス</button>
+    </div>
+  </header>
+
+  <!-- 左ペイン: ショー設定とキーフレーム一覧 -->
+  <aside class="pane pane-left">
+    <section>
+      <h2>ショー設定</h2>
+      <div class="field">
+        <label for="showName">ショー名</label>
+        <input id="showName" type="text">
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="droneCount">機数</label>
+          <input id="droneCount" type="number" min="1" max="500" step="1">
+        </div>
+        <div class="field">
+          <label for="exportFps">書き出し fps</label>
+          <input id="exportFps" type="number" min="1" max="30" step="1">
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>安全上限（検証の基準）</h2>
+      <div class="grid2">
+        <div class="field">
+          <label for="limSafety">機体間距離 [m]</label>
+          <input id="limSafety" type="number" min="0.5" max="20" step="0.5">
+        </div>
+        <div class="field">
+          <label for="limSpeed">最大速度 [m/s]</label>
+          <input id="limSpeed" type="number" min="1" max="25" step="0.5">
+        </div>
+        <div class="field">
+          <label for="limAccel">最大加速度 [m/s²]</label>
+          <input id="limAccel" type="number" min="0.5" max="20" step="0.5">
+        </div>
+        <div class="field">
+          <label for="limAlt">最高高度 [m]</label>
+          <input id="limAlt" type="number" min="5" max="150" step="5">
+        </div>
+        <div class="field">
+          <label for="limMinAlt">飛行中の下限 [m]</label>
+          <input id="limMinAlt" type="number" min="0" max="80" step="1">
+        </div>
+        <div class="field">
+          <label for="limFence">水平半径 [m]</label>
+          <input id="limFence" type="number" min="10" max="400" step="5">
+        </div>
+        <div class="field">
+          <label for="limBattery">バッテリ [分]</label>
+          <input id="limBattery" type="number" min="1" max="40" step="0.5">
+        </div>
+      </div>
+      <p class="note">最高高度は航空法の 150 m 未満に加え、余裕を見た値を設定すること。</p>
+    </section>
+
+    <section>
+      <h2>キーフレーム</h2>
+      <div class="kf-list" id="kfList"></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button id="kfAdd">＋ 追加</button>
+        <button id="kfDup">複製</button>
+        <button id="kfDel">削除</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button id="kfUp">↑ 上へ</button>
+        <button id="kfDown">↓ 下へ</button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- 中央: 3Dプレビューと再生コントロール -->
+  <main class="center">
+    <canvas id="view"></canvas>
+    <div class="transport">
+      <button id="playBtn" class="primary">▶ 再生</button>
+      <span class="time" id="timeLabel">0.0 / 0.0 s</span>
+      <input id="scrub" type="range" min="0" max="1000" value="0" step="1">
+      <select id="speedSel" style="width:auto;padding:5px 7px;background:var(--panel-2);border:1px solid var(--line);border-radius:5px">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+      <span class="time" id="segLabel">—</span>
+    </div>
+  </main>
+
+  <!-- 右ペイン: 選択中キーフレームの編集・検証・書き出し -->
+  <aside class="pane pane-right">
+    <section>
+      <h2>キーフレーム編集</h2>
+      <div id="kfEditor"></div>
+    </section>
+
+    <section>
+      <h2>安全検証</h2>
+      <div class="verdict idle" id="verdict">未検証。書き出し前に必ず実行すること。</div>
+      <div class="btn-row">
+        <button id="validateBtn" class="primary">検証を実行</button>
+      </div>
+      <div class="progress"><div id="validateProgress"></div></div>
+      <div id="checkList" style="margin-top:8px"></div>
+    </section>
+
+    <section>
+      <h2>書き出し</h2>
+      <div class="stat"><span>ショー長</span><span id="statDuration">—</span></div>
+      <div class="stat"><span>サンプル数 / 機</span><span id="statSamples">—</span></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button id="exportCsv">軌道 CSV</button>
+        <button id="exportJson">軌道 JSON</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button id="exportLaunch">離陸配置 CSV</button>
+        <button id="exportProject">プロジェクト保存</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button id="importProject">プロジェクト読込</button>
+        <button id="resetShow">サンプルに戻す</button>
+      </div>
+      <input id="fileInput" type="file" accept=".json,application/json" hidden>
+      <p class="note" style="margin-top:8px">
+        検証に不合格のままでも書き出しは可能だが、<strong>実機へのアップロードは禁止</strong>。
+        出力ファイルには検証結果が記録される。
+      </p>
+    </section>
+
+    <section>
+      <h2>使い方</h2>
+      <p class="hint">
+        左のキーフレームが「隊列」、その並びがそのまま時間軸になる（静止 → 遷移 → 静止 …）。
+        隊列間の機体割当はハンガリアン法で総移動距離が最小になるよう自動計算される。<br><br>
+        ビュー操作: ドラッグ = 回転 / Shift+ドラッグ・右ドラッグ = 平行移動 / ホイール = ズーム。<br><br>
+        座標系は ENU（x = 東, y = 北, z = 高度）、単位はメートル、原点は離陸グリッド中心。
+      </p>
+    </section>
+  </aside>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
