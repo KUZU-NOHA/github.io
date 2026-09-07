@@ -153,8 +153,8 @@
 
 | レイヤ | 採用技術（案） | 選定理由 |
 |---|---|---|
-| 振り付け設計 | Blender ＋ [Skybrush Studio](https://skybrush.io/)（OSSアドオン） | 3Dアニメーションから直接ドローン軌道を生成できる実績あるOSSパイプライン。ゼロから独自ツールを作るより検証コストが低い |
-| シミュレーション・衝突検証 | Skybrush Studio 内蔵の衝突チェッカー ＋ 自作の追加検証スクリプト（Python） | 「同一時刻に2機がN m以内に接近しないか」を全ペア・全時刻で検証する必要があり、独自の安全マージン基準を追加する |
+| 振り付け設計 | **[ドローンショー デザイナー](../app/drone-show/)（本リポジトリ・実装済み）** ／ Blender ＋ [Skybrush Studio](https://skybrush.io/)（OSSアドオン） | まず前者で隊列・タイムライン・LED を設計し、軌道を CSV/JSON で書き出す。より複雑な3Dアニメーション表現が必要になった段階で Blender + Skybrush Studio に移行する |
+| シミュレーション・衝突検証 | **ドローンショー デザイナー内蔵の検証（7項目）** ／ Skybrush Studio 内蔵の衝突チェッカー | 「同一時刻に2機がN m以内に接近しないか」を全ペア・全時刻で検証する。前者は機体間距離・速度・加速度・高度・地表クリアランス・ジオフェンス・飛行時間を日本国内運用の基準込みで検査する |
 | ミッション生成・地上局 | [Skybrush Server](https://skybrush.io/) ＋ Skybrush Live（Web UI） | ArduPilot 機体への軌道アップロード・GPS時刻同期・一斉離着陸・緊急停止までを担う、実機運用実績のあるOSS |
 | フライトコントローラ | ArduPilot（Copter, Guided/Auto モード） | MAVLink 経由で軌道追従が可能。Skybrush との連携実績が豊富 |
 | 測位 | u-blox F9P（RTK）または M8P | ドローンショー用途で広く使われるモジュール |
@@ -165,18 +165,27 @@
 ### 3.3 想定ファイル構成
 
 ```
-choreography/
+app/drone-show/                  ★実装済み: 振り付け設計・検証・書き出しツール（Webアプリ）
+  index.html                     https://kuzu-noha.github.io/app/drone-show/
+  js/formations.js               隊列ジェネレータ（13種）
+  js/assign.js                   ハンガリアン法による機体割当
+  js/show.js                     タイムライン・軌道サンプリング
+  js/validate.js                 安全検証（7項目）
+  js/exporters.js                CSV / JSON 書き出し
+  js/viewer.js                   3Dプレビュー（依存ゼロの Canvas 2D レンダラ）
+  README.md                      出力フォーマット仕様
+choreography/                    （将来）より複雑な3D表現が必要になった場合
   blender/show.blend             振り付けの3Dアニメーション原本
   export/trajectories.skyc       Skybrush 形式のミッションファイル（機体別軌道＋発光）
-sim/
-  collision_check.py             全機体ペア・全時刻の最小距離検証
-  battery_estimate.py            軌道長・上昇量から必要バッテリ容量を試算
-gcs/
+gcs/                             （未着手）現地オペレーション
   preflight_checklist.md         離陸前チェックリスト（GPS Fix数・電池電圧・機体位置オフセット等）
   emergency_procedure.md         緊急停止・RTH手順書
 docs/drone-show-requirements.md  本書
 README.md                        セットアップ・現地オペレーション手順
 ```
+
+> **現状**: 上記のうち `app/drone-show/` は実装済みで、①振り付け設計 → ②シミュレーション・衝突検証 → ③軌道データの書き出し（CSV / JSON）までが動作する。
+> ④実機への配信・監視・緊急停止（第5.3〜5.4節）は未着手であり、書き出したファイルを地上局ソフトに取り込む運用を想定している。
 
 ---
 
