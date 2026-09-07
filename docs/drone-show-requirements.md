@@ -166,7 +166,7 @@
 
 ```
 app/drone-show/                  ★実装済み: 振り付け設計・検証・書き出しツール（Webアプリ）
-  index.html                     https://kuzu-noha.github.io/app/drone-show/
+  index.html                     https://kuzu-noha.github.io/github.io/app/drone-show/
   js/formations.js               隊列ジェネレータ（13種）
   js/assign.js                   ハンガリアン法による機体割当
   js/show.js                     タイムライン・軌道サンプリング

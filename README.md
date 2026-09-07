@@ -4,7 +4,7 @@
 
 | アプリ | 内容 |
 |---|---|
-| [ドローンショー デザイナー](app/drone-show/) | 3D で隊列とアニメーションを設計し、各機の飛行経路（時刻・XYZ座標・LED色）を CSV / JSON に書き出すツール。安全検証つき。<br><https://kuzu-noha.github.io/app/drone-show/> |
+| [ドローンショー デザイナー](app/drone-show/) | 3D で隊列とアニメーションを設計し、各機の飛行経路（時刻・XYZ座標・LED色）を CSV / JSON に書き出すツール。安全検証つき。<br><https://kuzu-noha.github.io/github.io/app/drone-show/> |
 
 ## 要件定義書
 

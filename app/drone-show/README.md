@@ -4,7 +4,10 @@
 [ドローンショー実施プログラム 要件定義書](../../docs/drone-show-requirements.md) の
 §5.1 振り付け設計 / §5.2 シミュレーション・安全検証 / §5.3 ミッション生成 に対応する。
 
-**公開先**: <https://kuzu-noha.github.io/app/drone-show/>
+**公開先**: <https://kuzu-noha.github.io/github.io/app/drone-show/>
+（リポジトリの Settings → Pages で公開が有効になっていることが前提。
+このリポジトリ名は `github.io` のためプロジェクトサイト扱いとなり、URL にリポジトリ名が 1 段挟まる。
+`kuzu-noha.github.io` へ改名すれば `https://kuzu-noha.github.io/app/drone-show/` に短くなる）
 
 > このツールが担うのは設計〜検証〜データ書き出しまで。実機への配信・監視・緊急停止は範囲外で、
 > 出力ファイルを地上局ソフト（Skybrush Server / ArduPilot 系）に取り込んで使う想定。
