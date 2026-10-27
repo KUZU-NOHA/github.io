@@ -1,4 +1,4 @@
-# KDP listing kit — Pebble and the Big Red Mad (by KUZU NOHA)
+# KDP listing kit — Hickory and the Big Red Mad (by KUZU NOHA)
 
 Fields are copy-paste ready. English text is what goes into KDP; Japanese notes are for you.
 
@@ -7,7 +7,7 @@ Fields are copy-paste ready. English text is what goes into KDP; Japanese notes 
 | Field | Value |
 |---|---|
 | Language | English |
-| Book title | Pebble and the Big Red Mad |
+| Book title | Hickory and the Big Red Mad |
 | Subtitle | A Story About Big Feelings |
 | Series | (leave empty for now; add later if you make a series) |
 | Edition number | (empty) |
@@ -23,7 +23,7 @@ Fields are copy-paste ready. English text is what goes into KDP; Japanese notes 
 ### Description (paste into the HTML editor or plain text)
 
 ```
-<p><b>Pebble's block tower just crashed. And now he is MAD — really, really mad!</b></p>
+<p><b>Hickory's block tower just crashed. And now he is MAD — really, really mad!</b></p>
 <p>His tummy grumbles. His paws squeeze tight. A big red balloon of a feeling grows bigger and bigger... until Mama Bear kneels down and shows him what to do.</p>
 <p>With three simple steps — <b>Breathe. Stomp. Tell.</b> — little readers learn that big feelings are okay, and that they can learn to calm them.</p>
 <p><b>Inside this warm rhyming picture book:</b></p>
@@ -86,7 +86,7 @@ Suggestion: start at **$9.99** (competitive for picture books), watch sales, adj
 
 ## 4. Before you press "Publish"
 - [ ] `[Author Name]` is already KUZU NOHA in the files; use the same name on the KDP form.
-- [ ] Check Amazon.com and USPTO (tmsearch.uspto.gov) for the title and the name "Pebble" (see the Pebble research note in the chat/summary: Capstone's "Pebble" imprint exists).
+- [ ] Check Amazon.com and USPTO (tmsearch.uspto.gov) for the title and the name "Hickory" (web search found no bear picture book with this name; "Hickory Farms" is a food brand; not a legal clearance).
 - [ ] AI-generated content disclosure answered.
 - [ ] Previewer shows no errors; look at every page once.
 - [ ] Order a proof copy (author copy) before promoting the book; check colors and the gutter.
