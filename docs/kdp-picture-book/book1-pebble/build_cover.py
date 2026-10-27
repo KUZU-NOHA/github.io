@@ -33,7 +33,7 @@ def main():
     d = ImageDraw.Draw(cover)
     f = B.font(66)
     cx = FR0 + IN(B.TRIM) // 2
-    for i, line in enumerate(["Bruno Bear", "Has a Big Mad"]):
+    for i, line in enumerate(["Pebble and", "the Big Red Mad"]):
         tw = d.textlength(line, font=f)
         stroked(d, (cx - tw / 2, IN(0.55) + i * IN(1.0)), line, f, (150, 40, 30), (255, 248, 230))
     f2 = B.font(24)
@@ -43,8 +43,8 @@ def main():
     # back cover
     bx0 = IN(B.BLEED)
     bcx = bx0 + IN(B.TRIM) // 2
-    blurb = ["Bruno’s block tower just crashed.", "Now he is MAD — really, really mad!", "",
-             "With a little help from Mama Bear,", "Bruno learns three simple steps", "to calm a big feeling:", "Breathe. Stomp. Tell.", "",
+    blurb = ["Pebble’s block tower just crashed.", "Now he is MAD — really, really mad!", "",
+             "With a little help from Mama Bear,", "Pebble learns three simple steps", "to calm a big feeling:", "Breathe. Stomp. Tell.", "",
              "A warm rhyming story for ages 3–6,", "with a note for grown-ups."]
     fb = B.font(20)
     y = IN(0.75)

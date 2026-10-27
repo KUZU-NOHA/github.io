@@ -16,18 +16,18 @@ INK = (74, 44, 28)
 FONT = os.path.join(HERE, "fonts", "FredokaOne-Regular.ttf")
 
 STORY = [  # (left page text, right page text, text position)
-    ("Bruno Bear woke up with the sun,", "ready for a day of fun.", "top"),
+    ("Pebble Bear woke up with the sun,", "ready for a day of fun.", "top"),
     ("He built a tower, tall and grand,", "the tallest tower in all the land.", "top"),
-    ("Then CRASH! It tumbled, block by block.", "Bruno froze in total shock.", "top"),
+    ("Then CRASH! It tumbled, block by block.", "Pebble froze in total shock.", "top"),
     ("Grrrr went his tummy. His paws squeezed tight.", "His cheeks puffed up with all his might.", "top"),
-    ("“I’M MAD!” roared Bruno. “SO MAD!” he said.", "The mad grew big like a red balloon, and it might go BOOM quite soon!", ("topright", "top")),
+    ("“I’M MAD!” roared Pebble. “SO MAD!” he said.", "The mad grew big like a red balloon, and it might go BOOM quite soon!", ("topright", "top")),
     ("Mama Bear knelt down, soft and slow.", "“Big mads are hard. I know, I know.”", "top"),
     ("“Breathe in slow, smell a flower sweet.", "Breathe out slow, blow the candle neat.”", "top"),
     ("“Stomp your feet, one-two, one-two!", "Shake the mad out, through and through!”", "top"),
-    ("“Now tell me, Bruno, what is wrong?”", "“My tower fell… it took so long.”", "top"),
+    ("“Now tell me, Pebble, what is wrong?”", "“My tower fell… it took so long.”", "top"),
     ("The balloon got smaller, smaller still,", "until it fit on his windowsill.", "top"),
-    ("“Let’s build it back together, then.”", "And Bruno smiled. And smiled again.", "top"),
-    ("Now when big mads come knocking, you see,", "Bruno knows just what to do: Breathe. Stomp. Tell. And he’s calm as can be.", "top"),
+    ("“Let’s build it back together, then.”", "And Pebble smiled. And smiled again.", "top"),
+    ("Now when big mads come knocking, you see,", "Pebble knows just what to do: Breathe. Stomp. Tell. And he’s calm as can be.", "top"),
 ]
 
 
@@ -131,8 +131,8 @@ def title_page(recto=True):
     bruno = bruno.resize((IN(2.5), int(IN(2.5) * bruno.height / bruno.width)), Image.LANCZOS)
     cx = x_trim0(recto) + IN(TRIM) // 2
     p.paste(bruno, (cx - bruno.width // 2, IN(4.3)))
-    centered(p, "Bruno Bear", 1.0, 54, recto, (150, 40, 30))
-    centered(p, "Has a Big Mad", 1.9, 54, recto, (150, 40, 30))
+    centered(p, "Pebble and", 1.0, 54, recto, (150, 40, 30))
+    centered(p, "the Big Red Mad", 1.9, 54, recto, (150, 40, 30))
     centered(p, "A story about big feelings", 3.2, 20, recto)
     return p
 
@@ -178,17 +178,17 @@ def main():
     os.makedirs(os.path.join(out, "preview"), exist_ok=True)
     pages = [None] * 32  # index = page number - 1; odd page numbers are recto
     pages[0] = title_page()
-    pages[1] = text_page(False, [("Bruno Bear Has a Big Mad", 20, 0.3),
+    pages[1] = text_page(False, [("Pebble and the Big Red Mad", 20, 0.3),
                                  ("Text and illustrations © 2026. All rights reserved.", 14, 0.15),
                                  ("No part of this book may be reproduced without permission.", 14, 0.15),
-                                 ("Illustrations created with the assistance of AI tools.", 14, 0.15),
+                                 ("Illustrations were generated with AI tools and selected and arranged by the author.", 14, 0.15),
                                  ("First edition. Printed by Amazon KDP.", 14, 0)])
     pages[2] = text_page(True, [("For every little bear", 26, 0.1), ("with a big feeling.", 26, 0)])
     for k, (lt, rt, pos) in enumerate(STORY, start=1):
         a, b = spread_pages(os.path.join(HERE, "images", f"s{k:02d}.png"), lt, rt, pos)
         pages[2 * k + 2 - 1 + 0] = a      # page 2k+2 (verso)
         pages[2 * k + 3 - 1] = b          # page 2k+3 (recto)
-    pages[27] = text_page(False, [("Bruno’s 3 Calm-Down Steps", 30, 0.5),
+    pages[27] = text_page(False, [("Pebble’s 3 Calm-Down Steps", 30, 0.5),
                                   ("1. BREATHE", 26, 0.05), ("Smell the flower. Blow the candle.", 20, 0.4),
                                   ("2. STOMP", 26, 0.05), ("Stomp your feet. Shake it out!", 20, 0.4)],
                           art=pose(2, 2.0), top=0.9)
@@ -201,7 +201,7 @@ def main():
                                   ("Practice the three steps when everyone is calm.", 18, 0.2),
                                   ("Praise the effort, not just the result.", 18, 0)])
     pages[30] = text_page(True, [("Thank you for reading!", 28, 0.4),
-                                 ("If Bruno helped your little one, a short review on Amazon helps other families find this book.", 18, 0)])
+                                 ("If Pebble helped your little one, a short review on Amazon helps other families find this book.", 18, 0)])
     pages[31] = new_page()
     for i, p in enumerate(pages, start=1):
         assert p is not None and p.size == (PW, PH), i
