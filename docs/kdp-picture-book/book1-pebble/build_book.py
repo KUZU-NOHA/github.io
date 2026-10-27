@@ -101,9 +101,15 @@ def draw_text_block(img, text, recto, pos="top", pt=22, panel=True):
         d.text((cx - tw / 2, y + IN(0.2) + i * lh), l, font=f, fill=INK)
 
 
+def hires(path):
+    """Prefer the Real-ESRGAN upscaled copy (images_hires/) when it exists."""
+    alt = os.path.join(os.path.dirname(os.path.dirname(path)), "images_hires", os.path.basename(path))
+    return alt if os.path.exists(alt) else path
+
+
 def spread_pages(path, left_text, right_text, pos):
     """One 2:1 illustration -> two bled pages (left = verso, right = recto)."""
-    im = Image.open(path).convert("RGB")
+    im = Image.open(hires(path)).convert("RGB")
     tw, th = 2 * PW, PH
     s = max(tw / im.width, th / im.height)
     im = im.resize((int(im.width * s) + 1, int(im.height * s) + 1), Image.LANCZOS)

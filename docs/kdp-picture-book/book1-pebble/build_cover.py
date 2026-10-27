@@ -23,7 +23,7 @@ def stroked(d, xy, text, f, fill, stroke):
 
 def main():
     cover = Image.new("RGB", (W, H), B.CREAM)
-    art = Image.open(os.path.join(HERE, "images", "cover.png")).convert("RGB")
+    art = Image.open(B.hires(os.path.join(HERE, "images", "cover.png"))).convert("RGB")
     fw, fh = IN(B.TRIM + B.BLEED), H           # front incl. right/top/bottom bleed
     s = max(fw / art.width, fh / art.height)
     art = art.resize((int(art.width * s) + 1, int(art.height * s) + 1), Image.LANCZOS)
