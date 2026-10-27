@@ -20,7 +20,7 @@ STORY = [  # (left page text, right page text, text position)
     ("He built a tower, tall and grand,", "the tallest tower in all the land.", "top"),
     ("Then CRASH! It tumbled, block by block.", "Bruno froze in total shock.", "top"),
     ("Grrrr went his tummy. His paws squeezed tight.", "His cheeks puffed up with all his might.", "top"),
-    ("“I’M MAD!” roared Bruno. “SO MAD!” he said.", "The mad grew big like a red balloon, and it might go BOOM quite soon!", "top"),
+    ("“I’M MAD!” roared Bruno. “SO MAD!” he said.", "The mad grew big like a red balloon, and it might go BOOM quite soon!", ("topright", "top")),
     ("Mama Bear knelt down, soft and slow.", "“Big mads are hard. I know, I know.”", "top"),
     ("“Breathe in slow, smell a flower sweet.", "Breathe out slow, blow the candle neat.”", "top"),
     ("“Stomp your feet, one-two, one-two!", "Shake the mad out, through and through!”", "top"),
@@ -29,6 +29,15 @@ STORY = [  # (left page text, right page text, text position)
     ("“Let’s build it back together, then.”", "And Bruno smiled. And smiled again.", "top"),
     ("Now when big mads come knocking, you see,", "Bruno knows just what to do: Breathe. Stomp. Tell. And he’s calm as can be.", "top"),
 ]
+
+
+def to_cream(im):
+    """Re-map the character sheet's paper tone to the page colour so crops have no visible box."""
+    import numpy as np
+    a = np.asarray(im).astype("float32")
+    bg = np.array([254, 248, 232], dtype="float32")
+    a = a / bg * np.array(CREAM, dtype="float32")
+    return Image.fromarray(a.clip(0, 255).astype("uint8"))
 
 
 def font(pt):
@@ -72,12 +81,16 @@ def draw_text_block(img, text, recto, pos="top", pt=22, panel=True):
     boxw = IN(TRIM) - 2 * margin
     f = font(pt)
     d = ImageDraw.Draw(img)
+    if pos == "topright":
+        boxw = IN(2.9)
     lines = wrap(d, text, f, boxw - IN(0.5))
     lh = int(f.size * 1.3)
     h = lh * len(lines) + IN(0.4)
     w = max(d.textlength(l, font=f) for l in lines) + IN(0.5)
     cx = x0 + IN(TRIM) // 2
-    y = IN(BLEED) + IN(0.55) if pos == "top" else PH - IN(BLEED) - IN(0.55) - h
+    if pos == "topright":
+        cx = x0 + IN(TRIM) - IN(0.5) - int(w / 2)
+    y = IN(BLEED) + IN(0.55) if pos in ("top", "topright") else PH - IN(BLEED) - IN(0.55) - h
     if panel:
         ov = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ImageDraw.Draw(ov).rounded_rectangle([cx - w / 2, y, cx + w / 2, y + h], radius=IN(0.25), fill=(255, 250, 238, 200))
@@ -97,8 +110,9 @@ def spread_pages(path, left_text, right_text, pos):
     l, t = (im.width - tw) // 2, (im.height - th) // 2
     im = im.crop((l, t, l + tw, t + th)).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     left, right = im.crop((0, 0, PW, PH)), im.crop((PW, 0, 2 * PW, PH))
-    draw_text_block(left, left_text, recto=False, pos=pos)
-    draw_text_block(right, right_text, recto=True, pos=pos)
+    lpos, rpos = pos if isinstance(pos, tuple) else (pos, pos)
+    draw_text_block(left, left_text, recto=False, pos=lpos)
+    draw_text_block(right, right_text, recto=True, pos=rpos)
     return left, right
 
 
@@ -113,8 +127,8 @@ def centered(img, text, y_in, pt, recto, color=INK):
 def title_page(recto=True):
     p = new_page()
     sheet = Image.open(os.path.join(HERE, "images", "character-sheet.png")).convert("RGB")
-    bruno = sheet.crop((20, 90, 560, 940))
-    bruno = bruno.resize((IN(3.0), int(IN(3.0) * bruno.height / bruno.width)), Image.LANCZOS)
+    bruno = to_cream(sheet.crop((20, 90, 560, 940)))
+    bruno = bruno.resize((IN(2.5), int(IN(2.5) * bruno.height / bruno.width)), Image.LANCZOS)
     cx = x_trim0(recto) + IN(TRIM) // 2
     p.paste(bruno, (cx - bruno.width // 2, IN(4.3)))
     centered(p, "Bruno Bear", 1.0, 54, recto, (150, 40, 30))
@@ -127,7 +141,7 @@ def pose(idx, width_in):
     """Crop one of the three poses from the character sheet (0=calm, 1=angry, 2=breathing)."""
     sheet = Image.open(os.path.join(HERE, "images", "character-sheet.png")).convert("RGB")
     box = [(20, 90, 560, 940), (560, 90, 1000, 940), (1030, 90, 1520, 940)][idx]
-    im = sheet.crop(box)
+    im = to_cream(sheet.crop(box))
     return im.resize((IN(width_in), int(IN(width_in) * im.height / im.width)), Image.LANCZOS)
 
 
@@ -177,10 +191,10 @@ def main():
     pages[27] = text_page(False, [("Bruno’s 3 Calm-Down Steps", 30, 0.5),
                                   ("1. BREATHE", 26, 0.05), ("Smell the flower. Blow the candle.", 20, 0.4),
                                   ("2. STOMP", 26, 0.05), ("Stomp your feet. Shake it out!", 20, 0.4)],
-                          art=pose(2, 2.4), top=1.0)
+                          art=pose(2, 2.0), top=0.9)
     pages[28] = text_page(True, [("3. TELL", 26, 0.05), ("Tell someone what is wrong.", 20, 0.5),
                                  ("Big feelings are okay.", 24, 0.1), ("What you do next is the brave part.", 20, 0)],
-                         art=pose(0, 2.4), top=1.0)
+                         art=pose(0, 2.0), top=0.9)
     pages[29] = text_page(False, [("A Note for Grown-Ups", 26, 0.4),
                                   ("Name the feeling: “You feel mad.”", 18, 0.2),
                                   ("Stay calm and breathe together.", 18, 0.2),
