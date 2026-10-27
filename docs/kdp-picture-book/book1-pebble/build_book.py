@@ -134,6 +134,7 @@ def title_page(recto=True):
     centered(p, "Pebble and", 1.0, 54, recto, (150, 40, 30))
     centered(p, "the Big Red Mad", 1.9, 54, recto, (150, 40, 30))
     centered(p, "A story about big feelings", 3.2, 20, recto)
+    centered(p, "by KUZU NOHA", 3.75, 22, recto, (150, 40, 30))
     return p
 
 
@@ -179,7 +180,7 @@ def main():
     pages = [None] * 32  # index = page number - 1; odd page numbers are recto
     pages[0] = title_page()
     pages[1] = text_page(False, [("Pebble and the Big Red Mad", 20, 0.3),
-                                 ("Copyright © 2026 [Author Name]. All rights reserved.", 14, 0.15),
+                                 ("Copyright © 2026 KUZU NOHA. All rights reserved.", 14, 0.15),
                                  ("No part of this book may be reproduced without permission.", 14, 0.15),
                                  ("Illustrations were generated with AI tools and selected and arranged by the author.", 14, 0.15),
                                  ("First edition. Printed by Amazon KDP.", 14, 0)])

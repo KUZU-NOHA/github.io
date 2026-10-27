@@ -40,6 +40,10 @@ def main():
     sub = "A story about big feelings"
     tw = d.textlength(sub, font=f2)
     stroked(d, (cx - tw / 2, IN(2.75)), sub, f2, B.INK, (255, 248, 230))
+    fa = B.font(32)
+    auth = "KUZU NOHA"
+    tw = d.textlength(auth, font=fa)
+    stroked(d, (cx - tw / 2, IN(B.BLEED + B.TRIM - 0.95)), auth, fa, B.INK, (255, 248, 230))
     # back cover
     bx0 = IN(B.BLEED)
     bcx = bx0 + IN(B.TRIM) // 2
