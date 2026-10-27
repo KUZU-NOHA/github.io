@@ -11,7 +11,7 @@ IN = lambda x: int(round(x * DPI))
 TRIM = 8.5
 BLEED = 0.125
 PW, PH = IN(TRIM + BLEED), IN(TRIM + 2 * BLEED)   # page incl. bleed (gutter side has none)
-CREAM = (251, 243, 226)
+CREAM = (253, 246, 231)
 INK = (74, 44, 28)
 FONT = os.path.join(HERE, "fonts", "FredokaOne-Regular.ttf")
 
@@ -45,6 +45,15 @@ def wrap(draw, text, fnt, maxw):
             lines.append(cur)
             cur = w
     lines.append(cur)
+    if len(lines) == 2:  # balance two-line blocks so the second line is not a lone word
+        best = None
+        for i in range(1, len(words)):
+            a, b = " ".join(words[:i]), " ".join(words[i:])
+            wa, wb = draw.textlength(a, font=fnt), draw.textlength(b, font=fnt)
+            if max(wa, wb) <= maxw and (best is None or max(wa, wb) < best[0]):
+                best = (max(wa, wb), [a, b])
+        if best:
+            lines = best[1]
     return lines
 
 
@@ -114,9 +123,29 @@ def title_page(recto=True):
     return p
 
 
-def text_page(recto, blocks):
+def pose(idx, width_in):
+    """Crop one of the three poses from the character sheet (0=calm, 1=angry, 2=breathing)."""
+    sheet = Image.open(os.path.join(HERE, "images", "character-sheet.png")).convert("RGB")
+    box = [(20, 90, 560, 940), (560, 90, 1000, 940), (1030, 90, 1520, 940)][idx]
+    im = sheet.crop(box)
+    return im.resize((IN(width_in), int(IN(width_in) * im.height / im.width)), Image.LANCZOS)
+
+
+def text_height(blocks):
+    d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    y = 0.0
+    for text, pt, gap in blocks:
+        n = len(wrap(d, text, font(pt), IN(TRIM) - IN(1.4)))
+        y += n * pt * 1.35 / 72 + gap
+    return y
+
+
+def text_page(recto, blocks, art=None, top=None):
     p = new_page()
-    y = 1.0
+    y = top if top is not None else max(0.9, (TRIM + 0.25 - text_height(blocks)) / 2 - (1.6 if art else 0))
+    if art is not None:
+        cx = x_trim0(recto) + IN(TRIM) // 2
+        p.paste(art, (cx - art.width // 2, PH - IN(BLEED) - IN(0.6) - art.height))
     for text, pt, gap in blocks:
         d = ImageDraw.Draw(p)
         f = font(pt)
@@ -147,9 +176,11 @@ def main():
         pages[2 * k + 3 - 1] = b          # page 2k+3 (recto)
     pages[27] = text_page(False, [("Bruno’s 3 Calm-Down Steps", 30, 0.5),
                                   ("1. BREATHE", 26, 0.05), ("Smell the flower. Blow the candle.", 20, 0.4),
-                                  ("2. STOMP", 26, 0.05), ("Stomp your feet. Shake it out!", 20, 0.4)])
+                                  ("2. STOMP", 26, 0.05), ("Stomp your feet. Shake it out!", 20, 0.4)],
+                          art=pose(2, 2.4), top=1.0)
     pages[28] = text_page(True, [("3. TELL", 26, 0.05), ("Tell someone what is wrong.", 20, 0.5),
-                                 ("Big feelings are okay.", 24, 0.1), ("What you do next is the brave part.", 20, 0)])
+                                 ("Big feelings are okay.", 24, 0.1), ("What you do next is the brave part.", 20, 0)],
+                         art=pose(0, 2.4), top=1.0)
     pages[29] = text_page(False, [("A Note for Grown-Ups", 26, 0.4),
                                   ("Name the feeling: “You feel mad.”", 18, 0.2),
                                   ("Stay calm and breathe together.", 18, 0.2),
