@@ -179,7 +179,7 @@ def main():
     pages = [None] * 32  # index = page number - 1; odd page numbers are recto
     pages[0] = title_page()
     pages[1] = text_page(False, [("Pebble and the Big Red Mad", 20, 0.3),
-                                 ("Text and illustrations © 2026. All rights reserved.", 14, 0.15),
+                                 ("Copyright © 2026 [Author Name]. All rights reserved.", 14, 0.15),
                                  ("No part of this book may be reproduced without permission.", 14, 0.15),
                                  ("Illustrations were generated with AI tools and selected and arranged by the author.", 14, 0.15),
                                  ("First edition. Printed by Amazon KDP.", 14, 0)])
