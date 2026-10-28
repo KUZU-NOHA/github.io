@@ -31,11 +31,15 @@ def main():
     art = art.crop((l, t, l + fw, t + fh)).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     cover.paste(art, (FR0, 0))
     d = ImageDraw.Draw(cover)
-    f = B.font(66)
+    lines = ["Fennel and", "the Big Gray Worry"]
+    pt = 66
+    while pt > 40 and max(d.textlength(l, font=B.font(pt)) for l in lines) > IN(6.9):  # keep title inside the safe zone
+        pt -= 2
+    f = B.font(pt)
     cx = FR0 + IN(B.TRIM) // 2
-    for i, line in enumerate(["Fennel and", "the Big Gray Worry"]):
+    for i, line in enumerate(lines):
         tw = d.textlength(line, font=f)
-        stroked(d, (cx - tw / 2, IN(0.55) + i * IN(1.0)), line, f, (150, 40, 30), (255, 248, 230))
+        stroked(d, (cx - tw / 2, IN(0.55) + i * int(IN(pt / 72) * 1.12)), line, f, (150, 40, 30), (255, 248, 230))
     f2 = B.font(24)
     sub = "A story about feeling worried"
     tw = d.textlength(sub, font=f2)
