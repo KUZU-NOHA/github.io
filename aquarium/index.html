@@ -63,6 +63,8 @@
   .mult th { color:var(--sub); font-weight:400; border-bottom:none; }
   .grid2 { display:grid; gap:14px; grid-template-columns:1fr; }
   @media (min-width:820px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .strip { overflow-x:auto; padding-bottom:6px; }
+  .strip svg { width:auto; height:230px; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -142,7 +144,9 @@
   </section>
 
   <section class="card wide" id="secA">
-    <div class="grid2">
+    <h2>1分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
+    <div class="strip" id="stripA"></div>
+    <div class="grid2" style="margin-top:14px">
       <div>
         <h2>グラフ：時間 x と水面の高さ y</h2>
         <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
@@ -157,7 +161,9 @@
   </section>
 
   <section class="card wide" id="secB" hidden>
-    <div class="grid2">
+    <h2>T分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
+    <div class="strip" id="stripB"></div>
+    <div class="grid2" style="margin-top:14px">
       <div>
         <h2>時間が 2倍・3倍 になると？</h2>
         <p class="note">いまの出入り（バルブの状態）で、水位がどれだけ変わるか。</p>
@@ -394,6 +400,25 @@
     el('text', { x:L + 140, y:T + 18, 'font-size':11, fill:css('--sub') }, svg).textContent = '実験ではかった値';
   }
 
+  /* ================= 時間ごとの水面（横並びのミニ水槽） ================= */
+  function strip(box, pts, labelOf) {
+    const cw = 78, ch = 230, tw = 46, th = 130, ty = 38;
+    const svg = el('svg', { viewBox:`0 0 ${Math.max(cw * pts.length, 300)} ${ch}`, width:Math.max(cw * pts.length, 300), height:ch }, null);
+    const sub = css('--sub');
+    pts.forEach((p, i) => {
+      const cx = cw * i + cw / 2, x0 = cx - tw / 2, yb = ty + th;
+      const yw = yb - th * Math.max(0, Math.min(1, p[1] / S.H));
+      el('text', { x:cx, y:20, 'text-anchor':'middle', 'font-size':13, 'font-weight':700, fill:css('--ink') }, svg).textContent = labelOf(p[0], i);
+      el('rect', { x:x0, y:yw, width:tw, height:yb - yw, fill:css('--water'), opacity:.8 }, svg);
+      el('line', { x1:x0, x2:x0 + tw, y1:yw, y2:yw, stroke:css('--water-d'), 'stroke-width':2.5 }, svg);
+      el('path', { d:`M${x0} ${ty} V${yb} H${x0 + tw} V${ty}`, fill:'none', stroke:css('--glass'), 'stroke-width':3 }, svg);
+      el('text', { x:cx, y:yb + 22, 'text-anchor':'middle', 'font-size':15, 'font-weight':700, fill:css('--water-d') }, svg).textContent = f(p[1]) + ' cm';
+      el('text', { x:cx, y:yb + 40, 'text-anchor':'middle', 'font-size':11, fill:sub }, svg).textContent = i ? '+' + f(p[1] - pts[0][1]) + ' cm' : '';
+    });
+    box.innerHTML = ''; box.appendChild(svg);
+    box.scrollLeft = box.scrollWidth;
+  }
+
   /* ================= 表 ================= */
   function tableA() {
     const rows = S.rows;
@@ -403,6 +428,7 @@
       h += `<tr><td>${r[0]}</td><td>${f(r[1])}</td><td>${f(dlt)}</td><td>${r[0] ? f(dlt / r[0]) : '―'}</td></tr>`;
     });
     $('liveTable').innerHTML = h + '</table>';
+    strip($('stripA'), rows, t => t === 0 ? 'はじめ' : t + '分後');
     const sc = $('liveTable'); sc.scrollTop = sc.scrollHeight;
   }
 
@@ -423,6 +449,7 @@
       h += `<p class="hint">時間が2倍、3倍…になると、水位の変化も2倍、3倍…。y ÷ x はいつも ${f(a)} → <b>y = ${f(a)} x</b>（⚠ は水槽の限界をこえる値）</p>`;
       $('tblB1').innerHTML = h;
     }
+    strip($('stripB'), [0,1,2,3,4,5].map(k => [S.T * k, Math.max(0, Math.min(S.H, S.h0 + a * S.T * k))]), (t, i) => i ? f(t) + '分後' : 'はじめ');
     let h = '<table>' + hdr();
     h += '<tr><th>蛇口の量 x（L/分）</th>' + [1,2,3,4,5].map(k => `<td>${f(S.qin * k)}</td>`).join('') + '</tr>';
     h += `<tr><th>${f(S.T)}分後の水位の増え y (cm)</th>` + [1,2,3,4,5].map(k => cell(cm(S.qin * k) * S.T)).join('') + '</tr>';
