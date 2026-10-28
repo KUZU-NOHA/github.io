@@ -3,30 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>水槽の水位シミュレータ</title>
+<title>水槽で学ぶ 比例と反比例</title>
 <style>
   :root {
     --bg:#f3f7fa; --card:#fff; --ink:#1d2b36; --sub:#5b6b78; --line:#d5dee5;
     --water:#4aa8e0; --water-d:#2a7fb8; --in:#1f8f5f; --out:#d6492f; --glass:#8fb4c9; --pipe:#9aa7b0;
+    --k1:#8e44ad; --k2:#d98a00; --k3:#c2185b; --k4:#00838f; --k5:#6d4c41;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#10181e; --card:#18232b; --ink:#e6eef3; --sub:#93a5b2; --line:#2c3b46;
-      --in:#3fc48a; --out:#ff7a5f; --glass:#5d8499; --pipe:#6d7b85; }
+      --in:#3fc48a; --out:#ff7a5f; --glass:#5d8499; --pipe:#6d7b85;
+      --k1:#c58be0; --k2:#ffb733; --k3:#ff6fa5; --k4:#4dd0e1; --k5:#bcaaa4; }
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
     font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
-  header { padding:20px 16px 4px; max-width:1000px; margin:0 auto; }
+  header { padding:18px 16px 0; max-width:1040px; margin:0 auto; }
   h1 { font-size:1.4rem; margin:0 0 2px; }
   header p { margin:0; color:var(--sub); font-size:.9rem; }
-  main { max-width:1000px; margin:0 auto; padding:12px 16px 32px; display:grid; gap:14px; grid-template-columns:1fr; }
-  @media (min-width:800px){ main { grid-template-columns:1.2fr 1fr; } .wide{grid-column:1/-1;} }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .tabs { display:flex; gap:6px; max-width:1040px; margin:12px auto 0; padding:0 16px; flex-wrap:wrap; }
+  .tabs button { border-radius:999px; padding:8px 16px; font-weight:700; }
+  .tabs button[aria-selected=true] { background:var(--water-d); color:#fff; border-color:var(--water-d); }
+  main { max-width:1040px; margin:0 auto; padding:12px 16px 32px; display:grid; gap:14px; grid-template-columns:1fr; }
+  @media (min-width:820px){ main { grid-template-columns:1.2fr 1fr; } .wide{grid-column:1/-1;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0; }
   .card h2 { font-size:1rem; margin:0 0 8px; }
   svg { width:100%; height:auto; display:block; }
   .flow { stroke-dasharray:10 8; animation:fl .5s linear infinite; }
   @keyframes fl { to { stroke-dashoffset:-18; } }
-  .status { margin-top:8px; padding:8px 12px; border-radius:8px; background:var(--bg); font-weight:700; text-align:center; }
+  .status { margin-top:8px; padding:8px 12px; border-radius:8px; background:var(--bg); font-weight:700; text-align:center; min-height:2.6em; }
   .status.up { color:var(--in); } .status.down { color:var(--out); }
   .readout { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
   .readout div { background:var(--bg); border-radius:8px; padding:8px; text-align:center; }
@@ -37,24 +42,44 @@
   fieldset { border:1px solid var(--line); border-radius:8px; margin:10px 0 0; padding:0 10px 10px; }
   legend { font-size:.85rem; font-weight:700; padding:0 4px; }
   fieldset.in legend { color:var(--in); } fieldset.out legend { color:var(--out); }
-  fieldset.in input { accent-color:var(--in); } fieldset.out input { accent-color:var(--out); }
+  fieldset.in input[type=range] { accent-color:var(--in); } fieldset.out input[type=range] { accent-color:var(--out); }
   input[type=range] { width:100%; accent-color:var(--water-d); }
+  select { font:inherit; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
   .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
   button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
   button.primary { background:var(--water-d); color:#fff; border-color:var(--water-d); }
-  .eq { font-size:.9rem; background:var(--bg); border-radius:8px; padding:8px 10px; margin-top:10px; font-variant-numeric:tabular-nums; }
+  button.valve { font-weight:700; min-width:6.5em; }
+  button.valve.open { background:var(--in); color:#fff; border-color:var(--in); }
+  fieldset.out button.valve.open { background:var(--out); border-color:var(--out); }
+  .note { font-size:.85rem; color:var(--sub); margin:0 0 8px; }
   .hint { font-size:.8rem; color:var(--sub); margin-top:6px; }
+  .eq { font-size:.9rem; background:var(--bg); border-radius:8px; padding:8px 10px; margin-top:10px; font-variant-numeric:tabular-nums; }
+  .scroll { max-height:300px; overflow:auto; }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:.9rem; }
+  th, td { border:1px solid var(--line); padding:5px 8px; text-align:center; white-space:nowrap; }
+  th { background:var(--bg); font-weight:700; }
+  tr.ratio td, tr.ratio th { background:color-mix(in srgb, var(--water) 14%, transparent); }
+  td.warn { color:var(--out); }
+  .mult th { color:var(--sub); font-weight:400; border-bottom:none; }
+  .grid2 { display:grid; gap:14px; grid-template-columns:1fr; }
+  @media (min-width:820px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
 <header>
-  <h1>水槽の水位シミュレータ</h1>
-  <p>蛇口から入る水と排水口から出る水。その差で水面の高さが決まります。</p>
+  <h1>水槽で学ぶ 比例と反比例</h1>
+  <p>蛇口と排水口のバルブを開け閉めして、自由に実験しよう。水の出入りは水圧に関係なく、いつも一定です。</p>
 </header>
+<div class="tabs" role="tablist">
+  <button role="tab" id="tabA" aria-selected="true">① 実験：時間と水位</button>
+  <button role="tab" id="tabB" aria-selected="false">② 比例：2倍・3倍</button>
+  <button role="tab" id="tabC" aria-selected="false">③ 反比例：満水までの時間</button>
+</div>
 
 <main>
   <section class="card">
-    <h2>水槽</h2>
+    <h2>水槽（蛇口・排水口のバルブは図をクリックでも操作できます）</h2>
     <svg id="tank" viewBox="0 0 520 400" role="img" aria-label="蛇口と排水口のある水槽"></svg>
     <div id="status" class="status"></div>
     <div class="readout">
@@ -65,36 +90,104 @@
   </section>
 
   <section class="card">
-    <h2>設定</h2>
+    <h2>操作パネル</h2>
     <fieldset class="in"><legend>🚰 蛇口（入る水）</legend>
+      <div class="row" style="margin-top:8px"><button id="vin" class="valve"></button></div>
       <label>1分あたり <output id="oIn"></output></label>
-      <input id="qin" type="range" min="0" max="20" step="0.5" value="8">
+      <input id="qin" type="range" min="0.5" max="20" step="0.5" value="4">
     </fieldset>
     <fieldset class="out"><legend>🕳 排水口（出る水）</legend>
+      <div class="row" style="margin-top:8px"><button id="vout" class="valve"></button></div>
       <label>1分あたり <output id="oOut"></output></label>
-      <input id="qout" type="range" min="0" max="20" step="0.5" value="3">
+      <input id="qout" type="range" min="0.5" max="20" step="0.5" value="2">
     </fieldset>
-    <fieldset><legend>水槽の大きさ・はじめの水位</legend>
+    <fieldset><legend>水槽・スピード</legend>
       <label>幅 <output id="oW"></output></label>
-      <input id="w" type="range" min="20" max="120" value="60">
+      <input id="w" type="range" min="20" max="100" step="5" value="50">
       <label>奥行き <output id="oD"></output></label>
-      <input id="d" type="range" min="20" max="60" value="30">
+      <input id="d" type="range" min="20" max="60" step="5" value="40">
       <label>高さ <output id="oH"></output></label>
-      <input id="H" type="range" min="20" max="80" value="40">
+      <input id="H" type="range" min="20" max="80" step="5" value="40">
       <label>はじめの水位 <output id="oI"></output></label>
-      <input id="h0" type="range" min="0" max="40" step="0.5" value="10">
+      <input id="h0" type="range" min="0" max="40" step="1" value="0">
+      <label>スピード
+        <select id="speed">
+          <option value="0.5">ゆっくり（1秒＝0.5分）</option>
+          <option value="1" selected>ふつう（1秒＝1分）</option>
+          <option value="2">はやい（1秒＝2分）</option>
+          <option value="4">とてもはやい（1秒＝4分）</option>
+        </select>
+      </label>
     </fieldset>
     <div class="row">
-      <button id="play" class="primary">▶ スタート</button>
-      <button id="reset">リセット</button>
+      <button id="play" class="primary"></button>
+      <button id="reset">はじめにもどす</button>
+    </div>
+    <div id="panelB" hidden>
+      <fieldset><legend>② 基準の時間 T</legend>
+        <label>T = <output id="oT"></output></label>
+        <input id="T" type="range" min="1" max="5" step="0.5" value="2">
+        <div class="hint">スタートすると、T分・2T分・3T分…で自動的に止まります。止まったら水位を読み取り、もう一度スタートで続きます。</div>
+      </fieldset>
+    </div>
+    <div id="panelC" hidden>
+      <fieldset><legend>③ 目標の水位</legend>
+        <label>空の水槽から入れる高さ <output id="oG"></output></label>
+        <input id="G" type="range" min="5" max="40" step="5" value="20">
+        <div class="row"><button id="measure" class="primary">⏱ 目標まで入れて時間をはかる</button></div>
+        <div class="hint">蛇口の量を変えて何回かはかると、右下のグラフに点がたまります。</div>
+      </fieldset>
     </div>
     <div class="eq" id="eq"></div>
   </section>
 
-  <section class="card wide">
-    <h2>グラフ：時間と水面の高さ</h2>
-    <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
-    <div class="hint">実線は実際の水位の記録、点線はこのまま続けた場合の予想です。傾きは「1分あたりに変わる水面の高さ」。入る量と出る量が同じなら水平になります。</div>
+  <section class="card wide" id="secA">
+    <div class="grid2">
+      <div>
+        <h2>グラフ：時間 x と水面の高さ y</h2>
+        <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
+        <div class="hint">実線は記録、点線はこのまま続けた場合の予想。バルブを開け閉めするとグラフの傾きが変わります。</div>
+      </div>
+      <div id="tableBox">
+        <h2>表（1分ごとに自動で記録）</h2>
+        <p class="note">蛇口だけ開けて、はじめの水位 0 cm からスタートすると、x と y の関係がよく分かります。</p>
+        <div class="scroll" id="liveTable"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card wide" id="secB" hidden>
+    <div class="grid2">
+      <div>
+        <h2>時間が 2倍・3倍 になると？</h2>
+        <p class="note">いまの出入り（バルブの状態）で、水位がどれだけ変わるか。</p>
+        <div id="tblB1"></div>
+        <h2 style="margin-top:16px">蛇口の量が 2倍・3倍 になると？（同じ T 分間）</h2>
+        <div id="tblB2"></div>
+      </div>
+      <div>
+        <h2>グラフ</h2>
+        <svg id="graphB" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
+        <div class="hint">水槽の点線は T後・2T後・3T後…の水位。グラフの点と対応しています。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card wide" id="secC" hidden>
+    <div class="grid2">
+      <div>
+        <h2>蛇口の量 x と 満水までの時間 y</h2>
+        <p class="note" id="noteC"></p>
+        <div id="tblC"></div>
+        <h2 style="margin-top:16px">はかった記録</h2>
+        <div id="tblRec"></div>
+      </div>
+      <div>
+        <h2>グラフ</h2>
+        <svg id="graphC" viewBox="0 0 700 300" role="img" aria-label="蛇口の量と時間のグラフ"></svg>
+        <div class="hint">かけ算 x × y がいつも同じ（＝入れる水の量）になる関係が反比例です。</div>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -102,8 +195,9 @@
 (function () {
   const $ = id => document.getElementById(id);
   const NS = 'http://www.w3.org/2000/svg';
-  const S = { w:60, d:30, H:40, qin:8, qout:3, h0:10, t:0, h:10, playing:false, hist:[[0,10]] };
-  const SPEED = 1;                       // 実時間1秒 = シミュレーション1分
+  const S = { w:50, d:40, H:40, qin:4, qout:2, h0:0, inOpen:true, outOpen:false,
+    t:0, h:0, playing:false, speed:1, hist:[[0,0]], rows:[[0,0]],
+    tab:'A', T:2, stops:[], stopIdx:0, msg:'', G:20, measuring:false, records:[] };
 
   const el = (name, attrs, parent) => {
     const e = document.createElementNS(NS, name);
@@ -112,19 +206,24 @@
     return e;
   };
   const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  const area = () => S.w * S.d;                    // 底面積 cm²
-  const net = () => (S.qin - S.qout) * 1000 / area();   // 水位の変化 cm/分
-  // 実際に出ていく量：空のときは出ない
-  const outNow = () => (S.h <= 0 && S.qin <= S.qout) ? S.qin : S.qout;
+  const f = x => String(Number(x.toFixed(2)));
+  const area = () => S.w * S.d;
+  const cm = q => q * 1000 / area();                   // q L/分 → cm/分
+  const rate = () => (S.inOpen ? S.qin : 0) - (S.outOpen ? S.qout : 0);   // L/分（水圧に関係なく一定）
+  const KC = ['--k1', '--k2', '--k3', '--k4', '--k5'];
 
-  /* ---------- 水槽 ---------- */
+  /* ================= 水槽 ================= */
   const tank = $('tank');
   const TX = 130, TW = 250, TY = 90, TH = 230;
 
-  function stream(parent, x, y1, y2, rate, color) {
-    if (rate <= 0 || y2 <= y1) return;
-    el('line', { x1:x, x2:x, y1, y2, stroke:color, 'stroke-width':3 + rate * 1.1,
-      'stroke-linecap':'butt', opacity:.85, class:'flow' }, parent);
+  function stream(x, y1, y2, q) {
+    if (y2 <= y1) return;
+    el('line', { x1:x, x2:x, y1, y2, stroke:css('--water'), 'stroke-width':3 + q * 1.1, opacity:.85, class:'flow' }, tank);
+  }
+  function valveBtn(x, y, open, key, color) {
+    const g = el('g', { 'data-valve':key, style:'cursor:pointer' }, tank);
+    el('circle', { cx:x, cy:y, r:17, fill:open ? color : css('--pipe'), stroke:css('--card'), 'stroke-width':2 }, g);
+    el('text', { x, y:y + 5, 'text-anchor':'middle', 'font-size':14, 'font-weight':700, fill:'#fff' }, g).textContent = open ? '開' : '閉';
   }
 
   function drawTank() {
@@ -132,184 +231,367 @@
     const scale = Math.min(TW / S.w, TH / S.H);
     const pw = S.w * scale, ph = S.H * scale;
     const x0 = TX + (TW - pw) / 2, yb = TY + TH, yTop = yb - ph;
-    const yw = yb - ph * (S.h / S.H);
-    const full = S.h >= S.H - 1e-6;
-    const inActive = S.qin > 0;
-    const outActive = S.qout > 0 && (S.h > 0 || S.qin > 0);
+    const yAt = h => yb - ph * (h / S.H);
+    const yw = yAt(S.h);
+    const inOn = S.inOpen && S.qin > 0;
+    const outOn = S.outOpen && S.qout > 0 && (S.h > 0 || inOn);
 
     const defs = el('defs', {}, tank);
     const g = el('linearGradient', { id:'wg', x1:0, y1:0, x2:0, y2:1 }, defs);
     el('stop', { offset:'0', 'stop-color':css('--water'), 'stop-opacity':.65 }, g);
     el('stop', { offset:'1', 'stop-color':css('--water-d'), 'stop-opacity':.9 }, g);
 
-    // 蛇口（上から）
-    const fx = x0 + pw * 0.35, fy = yTop - 38;
-    el('rect', { x:fx - 60, y:fy - 26, width:70, height:14, rx:5, fill:css('--pipe') }, tank);
+    // 蛇口
+    const fx = x0 + pw * 0.3, fy = yTop - 34;
+    el('rect', { x:fx - 70, y:fy - 22, width:80, height:14, rx:5, fill:css('--pipe') }, tank);
     el('rect', { x:fx - 12, y:fy - 14, width:24, height:22, rx:4, fill:css('--pipe') }, tank);
-    el('rect', { x:fx - 4, y:fy - 38, width:8, height:12, fill:css('--pipe') }, tank);
-    el('rect', { x:fx - 14, y:fy - 44, width:28, height:7, rx:3, fill:css('--in') }, tank);
-    if (inActive) stream(tank, fx, fy + 8, S.h > 0 ? yw : yb, S.qin, css('--water'));
+    valveBtn(fx - 78, fy - 15, S.inOpen, 'in', css('--in'));
+    if (inOn) stream(fx, fy + 8, S.h > 0 ? yw : yb, S.qin);
 
     // 水
     el('rect', { x:x0, y:yw, width:pw, height:yb - yw, fill:'url(#wg)' }, tank);
     el('line', { x1:x0, x2:x0 + pw, y1:yw, y2:yw, stroke:css('--water-d'), 'stroke-width':2.5 }, tank);
 
-    // 排水口（右下）
-    el('rect', { x:x0 + pw - 2, y:yb - 26, width:36, height:20, fill:css('--pipe') }, tank);
-    el('rect', { x:x0 + pw + 22, y:yb - 26, width:14, height:46, fill:css('--pipe') }, tank);
-    el('rect', { x:x0 + pw + 18, y:yb + 18, width:22, height:6, rx:2, fill:css('--out') }, tank);
-    if (outActive) stream(tank, x0 + pw + 29, yb + 24, yb + 70, S.qout, css('--water'));
-    // 排水口の中の栓の状態
-    el('circle', { cx:x0 + pw - 6, cy:yb - 16, r:6, fill:S.qout > 0 ? css('--out') : css('--pipe'), opacity:.9 }, tank);
-
-    // ガラス
-    el('path', { d:`M${x0} ${yTop} V${yb} H${x0 + pw} V${yTop}`, fill:'none',
-      stroke:css('--glass'), 'stroke-width':5, 'stroke-linejoin':'round' }, tank);
-
-    // あふれ
-    if (full && S.qin > S.qout) {
-      const t = el('text', { x:x0 + pw / 2, y:yTop - 6, 'text-anchor':'middle', 'font-size':14, 'font-weight':700, fill:css('--out') }, tank);
-      t.textContent = '⚠ あふれる！';
+    // 目標・ガイド線
+    if (S.tab === 'C') {
+      const y = yAt(S.G);
+      el('line', { x1:x0, x2:x0 + pw, y1:y, y2:y, stroke:css('--out'), 'stroke-width':2, 'stroke-dasharray':'6 4' }, tank);
+      el('text', { x:x0 + pw - 4, y:y - 5, 'text-anchor':'end', 'font-size':12, 'font-weight':700, fill:css('--out') }, tank).textContent = `目標 ${S.G} cm`;
+    }
+    if (S.tab === 'B') {
+      const a = rate();
+      if (a !== 0) for (let k = 1; k <= 5; k++) {
+        const hk = S.h0 + cm(a) * S.T * k;
+        if (hk < 0 || hk > S.H) continue;
+        const y = yAt(hk), c = css(KC[k - 1]);
+        el('line', { x1:x0, x2:x0 + pw, y1:y, y2:y, stroke:c, 'stroke-width':2, 'stroke-dasharray':'6 4' }, tank);
+        el('text', { x:x0 + pw - 4, y:y - 4, 'text-anchor':'end', 'font-size':12, 'font-weight':700, fill:c }, tank)
+          .textContent = (k === 1 ? '' : k) + 'T後';
+      }
     }
 
-    // 目盛
+    // 排水口
+    const dx = x0 + pw;
+    el('rect', { x:dx - 2, y:yb - 26, width:40, height:20, fill:css('--pipe') }, tank);
+    el('rect', { x:dx + 26, y:yb - 26, width:14, height:46, fill:css('--pipe') }, tank);
+    el('rect', { x:dx + 22, y:yb + 18, width:22, height:6, rx:2, fill:css('--out') }, tank);
+    if (outOn) stream(dx + 33, yb + 24, yb + 72, S.qout);
+    valveBtn(dx + 14, yb - 16, S.outOpen, 'out', css('--out'));
+
+    // ガラス
+    el('path', { d:`M${x0} ${yTop} V${yb} H${x0 + pw} V${yTop}`, fill:'none', stroke:css('--glass'), 'stroke-width':5, 'stroke-linejoin':'round' }, tank);
+    if (S.h >= S.H - 1e-6 && rate() > 0)
+      el('text', { x:x0 + pw / 2, y:yTop - 6, 'text-anchor':'middle', 'font-size':14, 'font-weight':700, fill:css('--out') }, tank).textContent = '⚠ 満水（あふれる）';
+
+    // 目盛・水位表示
     const step = S.H > 50 ? 10 : 5;
     for (let v = 0; v <= S.H; v += step) {
-      const y = yb - v * scale;
+      const y = yAt(v);
       el('line', { x1:x0 - 8, x2:x0 - 2, y1:y, y2:y, stroke:css('--sub') }, tank);
       el('text', { x:x0 - 12, y:y + 4, 'text-anchor':'end', 'font-size':11, fill:css('--sub') }, tank).textContent = v;
     }
-    // 水位の寸法線（左側）
     const hx = x0 - 46;
     el('line', { x1:hx, x2:hx, y1:yb, y2:yw, stroke:css('--water-d'), 'stroke-width':2 }, tank);
     el('line', { x1:hx - 5, x2:hx + 5, y1:yw, y2:yw, stroke:css('--water-d'), 'stroke-width':2 }, tank);
-    const lab = el('text', { x:hx - 8, y:(yb + yw) / 2 + 4, 'text-anchor':'end', 'font-size':14, 'font-weight':700, fill:css('--water-d') }, tank);
-    lab.textContent = S.h.toFixed(1) + ' cm';
+    el('text', { x:hx - 8, y:(yb + yw) / 2 + 4, 'text-anchor':'end', 'font-size':14, 'font-weight':700, fill:css('--water-d') }, tank).textContent = S.h.toFixed(1) + ' cm';
 
-    // 入る量・出る量ラベル
-    const li = el('text', { x:fx + 22, y:fy - 22, 'font-size':14, 'font-weight':700, fill:css('--in') }, tank);
-    li.textContent = `入る ${S.qin} L/分`;
-    const lo = el('text', { x:x0 + pw + 48, y:yb + 40, 'font-size':14, 'font-weight':700, fill:css('--out') }, tank);
-    lo.textContent = `出る ${S.qout} L/分`;
-
+    // 量のラベル
+    el('text', { x:fx - 70, y:fy - 32, 'font-size':14, 'font-weight':700, fill:css('--in') }, tank)
+      .textContent = `入る ${S.inOpen ? S.qin : 0} L/分`;
+    el('text', { x:dx + 48, y:yb + 40, 'font-size':14, 'font-weight':700, fill:css('--out') }, tank)
+      .textContent = `出る ${S.outOpen ? S.qout : 0} L/分`;
     el('text', { x:x0 + pw / 2, y:yb + 22, 'text-anchor':'middle', 'font-size':12, fill:css('--sub') }, tank)
-      .textContent = `幅 ${S.w} × 奥行き ${S.d} × 高さ ${S.H} cm`;
-
-    // 入る・出るの量の比較バー（左上）
-    const bx = 14, by = 14, bw = 90, mx = 20;
-    [['入る', S.qin, '--in'], ['出る', S.qout, '--out']].forEach(([n, q, c], i) => {
-      const y = by + i * 22;
-      el('text', { x:bx, y:y + 12, 'font-size':12, fill:css('--sub') }, tank).textContent = n;
-      el('rect', { x:bx + 30, y, width:bw, height:14, rx:3, fill:css('--bg') }, tank);
-      el('rect', { x:bx + 30, y, width:bw * q / mx, height:14, rx:3, fill:css(c) }, tank);
-    });
+      .textContent = `幅 ${S.w} × 奥行き ${S.d} × 高さ ${S.H} cm（底面積 ${area()} cm²）`;
   }
+  tank.addEventListener('pointerdown', e => {
+    const v = e.target.closest && e.target.closest('[data-valve]');
+    if (!v) return;
+    toggle(v.getAttribute('data-valve'));
+  });
 
-  /* ---------- グラフ ---------- */
-  const graph = $('graph');
-  function drawGraph() {
-    graph.innerHTML = '';
-    const L = 56, R = 20, T = 18, B = 40, W = 700, Hh = 260;
-    const pw = W - L - R, ph = Hh - T - B;
-    const tmax = Math.max(10, Math.ceil((S.t + 1) / 5) * 5);
-    const X = t => L + t / tmax * pw;
-    const Y = h => T + ph - h / S.H * ph;
+  /* ================= グラフ共通 ================= */
+  function axes(svg, L, T, pw, ph, xmax, ymax, xs, ys, xl, yl, W, H) {
+    const X = x => L + x / xmax * pw, Y = y => T + ph - y / ymax * ph;
     const sub = css('--sub'), line = css('--line');
-    const hs = S.H > 50 ? 10 : 5, ts = tmax > 30 ? 10 : tmax > 15 ? 5 : 2;
-
-    for (let v = 0; v <= S.H; v += hs) {
-      el('line', { x1:L, x2:L + pw, y1:Y(v), y2:Y(v), stroke:line }, graph);
-      el('text', { x:L - 8, y:Y(v) + 4, 'text-anchor':'end', 'font-size':11, fill:sub }, graph).textContent = v;
+    for (let v = 0; v <= ymax + 1e-9; v += ys) {
+      el('line', { x1:L, x2:L + pw, y1:Y(v), y2:Y(v), stroke:line }, svg);
+      el('text', { x:L - 8, y:Y(v) + 4, 'text-anchor':'end', 'font-size':11, fill:sub }, svg).textContent = f(v);
     }
-    for (let t = 0; t <= tmax; t += ts) {
-      el('line', { x1:X(t), x2:X(t), y1:T, y2:T + ph, stroke:line }, graph);
-      el('text', { x:X(t), y:T + ph + 16, 'text-anchor':'middle', 'font-size':11, fill:sub }, graph).textContent = t;
+    for (let v = 0; v <= xmax + 1e-9; v += xs) {
+      el('line', { x1:X(v), x2:X(v), y1:T, y2:T + ph, stroke:line }, svg);
+      el('text', { x:X(v), y:T + ph + 16, 'text-anchor':'middle', 'font-size':11, fill:sub }, svg).textContent = f(v);
     }
-    el('text', { x:L + pw / 2, y:Hh - 6, 'text-anchor':'middle', 'font-size':12, fill:sub }, graph).textContent = '時間（分）';
-    el('text', { x:14, y:T + ph / 2, 'font-size':12, fill:sub, transform:`rotate(-90 14 ${T + ph / 2})`, 'text-anchor':'middle' }, graph).textContent = '水面の高さ (cm)';
-    el('line', { x1:L, x2:L + pw, y1:Y(S.H), y2:Y(S.H), stroke:css('--out'), 'stroke-dasharray':'5 4' }, graph);
+    el('text', { x:L + pw / 2, y:H - 6, 'text-anchor':'middle', 'font-size':12, fill:sub }, svg).textContent = xl;
+    el('text', { x:14, y:T + ph / 2, 'font-size':12, fill:sub, 'text-anchor':'middle', transform:`rotate(-90 14 ${T + ph / 2})` }, svg).textContent = yl;
+    return { X, Y };
+  }
+  const nice = (v, steps) => { for (const s of steps) if (v <= s) return s; return Math.ceil(v / 10) * 10; };
 
-    // 予想（点線）
-    const a = net();
-    let tEnd = tmax;
-    if (a > 0) tEnd = Math.min(tmax, S.t + (S.H - S.h) / a);
-    else if (a < 0) tEnd = Math.min(tmax, S.t + S.h / -a);
-    if (a === 0) tEnd = tmax;
-    const hEnd = Math.max(0, Math.min(S.H, S.h + a * (tEnd - S.t)));
-    let d = `M${X(S.t)} ${Y(S.h)} L${X(tEnd)} ${Y(hEnd)}`;
-    if (tEnd < tmax) d += ` L${X(tmax)} ${Y(hEnd)}`;
-    el('path', { d, fill:'none', stroke:css('--water-d'), 'stroke-width':2.5, 'stroke-dasharray':'6 5', opacity:.7 }, graph);
+  // 時間-水位グラフ（A・B 共通）
+  function drawTimeGraph(svg) {
+    svg.innerHTML = '';
+    const L = 56, R = 20, T = 18, B = 40, W = 700, Hh = 260, pw = W - L - R, ph = Hh - T - B;
+    const isB = S.tab === 'B';
+    let tmax = Math.max(10, Math.ceil((S.t + 1) / 5) * 5);
+    if (isB) tmax = Math.max(Math.ceil((5 * S.T + 1) / 2) * 2, Math.ceil(S.t + 1));
+    const ts = tmax > 30 ? 10 : tmax > 14 ? 5 : tmax > 8 ? 2 : 1;
+    const { X, Y } = axes(svg, L, T, pw, ph, tmax, S.H, ts, S.H > 50 ? 10 : 5, '時間 x（分）', '水面の高さ y (cm)', W, Hh);
+    el('line', { x1:L, x2:L + pw, y1:Y(S.H), y2:Y(S.H), stroke:css('--out'), 'stroke-dasharray':'5 4' }, svg);
 
-    // 記録（実線）
-    el('path', { d:'M' + S.hist.map(p => `${X(p[0])} ${Y(p[1])}`).join(' L'),
-      fill:'none', stroke:css('--water-d'), 'stroke-width':3.5, 'stroke-linejoin':'round' }, graph);
-    el('circle', { cx:X(S.t), cy:Y(S.h), r:6, fill:css('--water-d') }, graph);
+    const a = cm(rate());
+    // 予想
+    const h1 = (t0, h0v) => {
+      let tEnd = tmax;
+      if (a > 0) tEnd = Math.min(tmax, t0 + (S.H - h0v) / a);
+      else if (a < 0) tEnd = Math.min(tmax, t0 + h0v / -a);
+      const hEnd = Math.max(0, Math.min(S.H, h0v + a * (tEnd - t0)));
+      let d = `M${X(t0)} ${Y(h0v)} L${X(tEnd)} ${Y(hEnd)}`;
+      if (tEnd < tmax) d += ` L${X(tmax)} ${Y(hEnd)}`;
+      return d;
+    };
+    if (isB) {
+      el('path', { d:h1(0, S.h0), fill:'none', stroke:css('--water-d'), 'stroke-width':2.5, 'stroke-dasharray':'6 5', opacity:.7 }, svg);
+      if (a !== 0) for (let k = 1; k <= 5; k++) {
+        const hk = S.h0 + a * S.T * k;
+        if (hk < 0 || hk > S.H) continue;
+        const c = css(KC[k - 1]);
+        el('line', { x1:X(S.T * k), x2:X(S.T * k), y1:Y(hk), y2:T + ph, stroke:c, 'stroke-dasharray':'3 3' }, svg);
+        el('line', { x1:L, x2:X(S.T * k), y1:Y(hk), y2:Y(hk), stroke:c, 'stroke-dasharray':'3 3' }, svg);
+        el('circle', { cx:X(S.T * k), cy:Y(hk), r:6, fill:c }, svg);
+      }
+    } else {
+      el('path', { d:h1(S.t, S.h), fill:'none', stroke:css('--water-d'), 'stroke-width':2.5, 'stroke-dasharray':'6 5', opacity:.7 }, svg);
+    }
+    el('path', { d:'M' + S.hist.map(p => `${X(p[0])} ${Y(p[1])}`).join(' L'), fill:'none', stroke:css('--water-d'), 'stroke-width':3.5, 'stroke-linejoin':'round' }, svg);
+    el('circle', { cx:X(S.t), cy:Y(S.h), r:5, fill:css('--water-d'), stroke:css('--card'), 'stroke-width':2 }, svg);
   }
 
-  /* ---------- 表示 ---------- */
-  function sync() {
+  // 反比例グラフ（C）
+  function drawInvGraph() {
+    const svg = $('graphC'); svg.innerHTML = '';
+    const L = 56, R = 20, T = 18, B = 40, W = 700, Hh = 300, pw = W - L - R, ph = Hh - T - B;
+    const V = area() * S.G / 1000;
+    const ymax = nice(V, [10, 20, 30, 40, 50, 60, 80, 100, 150, 200]);
+    const ys = ymax <= 20 ? 2 : ymax <= 60 ? 10 : ymax <= 100 ? 20 : 50;
+    const { X, Y } = axes(svg, L, T, pw, ph, 20, ymax, 2, ys, '蛇口の量 x（L/分）', '時間 y（分）', W, Hh);
+    const id = 'cl' + Math.random().toString(36).slice(2, 6);
+    const cp = el('clipPath', { id }, el('defs', {}, svg));
+    el('rect', { x:L, y:T, width:pw, height:ph }, cp);
+    let d = '';
+    for (let x = 0.3; x <= 20.001; x += 0.1) d += (d ? ' L' : 'M') + `${X(x)} ${Y(V / x)}`;
+    el('path', { d, fill:'none', stroke:css('--water-d'), 'stroke-width':3, 'clip-path':`url(#${id})` }, svg);
+    if (S.qin > 0) for (let k = 1; k <= 5; k++) {
+      const x = S.qin * k; if (x > 20) break;
+      const c = css(KC[k - 1]);
+      el('line', { x1:X(x), x2:X(x), y1:Y(V / x), y2:T + ph, stroke:c, 'stroke-dasharray':'3 3', 'clip-path':`url(#${id})` }, svg);
+      el('circle', { cx:X(x), cy:Y(V / x), r:6, fill:c, 'clip-path':`url(#${id})` }, svg);
+    }
+    S.records.forEach(r => el('rect', { x:X(r[0]) - 5, y:Y(r[1]) - 5, width:10, height:10, fill:css('--out'), 'clip-path':`url(#${id})`, stroke:css('--card'), 'stroke-width':1.5 }, svg));
+    // 凡例
+    el('circle', { cx:L + 14, cy:T + 14, r:5, fill:css('--k1') }, svg);
+    el('text', { x:L + 24, y:T + 18, 'font-size':11, fill:css('--sub') }, svg).textContent = '計算（表の値）';
+    el('rect', { x:L + 124, y:T + 9, width:10, height:10, fill:css('--out') }, svg);
+    el('text', { x:L + 140, y:T + 18, 'font-size':11, fill:css('--sub') }, svg).textContent = '実験ではかった値';
+  }
+
+  /* ================= 表 ================= */
+  function tableA() {
+    const rows = S.rows;
+    let h = '<table><tr><th>時間 x（分）</th><th>水位 y (cm)</th><th>はじめから増えた高さ (cm)</th><th>増えた高さ ÷ x</th></tr>';
+    rows.forEach(r => {
+      const dlt = r[1] - S.h0;
+      h += `<tr><td>${r[0]}</td><td>${f(r[1])}</td><td>${f(dlt)}</td><td>${r[0] ? f(dlt / r[0]) : '―'}</td></tr>`;
+    });
+    $('liveTable').innerHTML = h + '</table>';
+    const sc = $('liveTable'); sc.scrollTop = sc.scrollHeight;
+  }
+
+  function tableB() {
+    const a = cm(rate());
+    const hdr = (n, unit) => '<tr class="mult"><th></th>' + [1,2,3,4,5].map(k => `<th style="color:var(${KC[k-1]})">×${k}</th>`).join('') + '</tr>';
+    const cell = (v) => {
+      const over = S.h0 + v > S.H + 1e-9 || S.h0 + v < -1e-9;
+      return `<td class="${over ? 'warn' : ''}">${f(v)}${over ? ' ⚠' : ''}</td>`;
+    };
+    if (rate() === 0) {
+      $('tblB1').innerHTML = '<p class="note">蛇口か排水口のバルブを開けて、水位が変わるようにしてください。</p>';
+    } else {
+      let h = '<table>' + hdr();
+      h += '<tr><th>時間 x（分）</th>' + [1,2,3,4,5].map(k => `<td>${f(S.T * k)}</td>`).join('') + '</tr>';
+      h += '<tr><th>水位の変化 y (cm)</th>' + [1,2,3,4,5].map(k => cell(a * S.T * k)).join('') + '</tr>';
+      h += '<tr class="ratio"><th>y ÷ x（1分あたり）</th>' + [1,2,3,4,5].map(() => `<td>${f(a)}</td>`).join('') + '</tr></table>';
+      h += `<p class="hint">時間が2倍、3倍…になると、水位の変化も2倍、3倍…。y ÷ x はいつも ${f(a)} → <b>y = ${f(a)} x</b>（⚠ は水槽の限界をこえる値）</p>`;
+      $('tblB1').innerHTML = h;
+    }
+    let h = '<table>' + hdr();
+    h += '<tr><th>蛇口の量 x（L/分）</th>' + [1,2,3,4,5].map(k => `<td>${f(S.qin * k)}</td>`).join('') + '</tr>';
+    h += `<tr><th>${f(S.T)}分後の水位の増え y (cm)</th>` + [1,2,3,4,5].map(k => cell(cm(S.qin * k) * S.T)).join('') + '</tr>';
+    h += '<tr class="ratio"><th>y ÷ x</th>' + [1,2,3,4,5].map(() => `<td>${f(cm(1) * S.T)}</td>`).join('') + '</tr></table>';
+    h += `<p class="hint">排水口を閉じたとき、蛇口の量が2倍、3倍…になると水位の増えも2倍、3倍…（y = ${f(cm(1) * S.T)} x）</p>`;
+    $('tblB2').innerHTML = h;
+  }
+
+  function tableC() {
+    const V = area() * S.G / 1000;
+    $('noteC').textContent = `空の水槽に ${S.G} cm まで入れるには ${f(V)} L 必要です（${area()} cm² × ${S.G} cm ÷ 1000）。`;
+    const hdr = '<tr class="mult"><th></th>' + [1,2,3,4,5].map(k => `<th style="color:var(${KC[k-1]})">×${k}</th>`).join('') + '</tr>';
+    let h = '<table>' + hdr;
+    h += '<tr><th>蛇口の量 x（L/分）</th>' + [1,2,3,4,5].map(k => `<td>${f(S.qin * k)}</td>`).join('') + '</tr>';
+    h += '<tr><th>かかる時間 y（分）</th>' + [1,2,3,4,5].map(k => `<td>${f(V / (S.qin * k))}</td>`).join('') + '</tr>';
+    h += '<tr class="ratio"><th>x × y（L）</th>' + [1,2,3,4,5].map(() => `<td>${f(V)}</td>`).join('') + '</tr></table>';
+    h += `<p class="hint">蛇口の量が2倍、3倍…になると、時間は ½ 倍、⅓ 倍…。x × y = ${f(V)} → <b>y = ${f(V)} ÷ x</b></p>`;
+    $('tblC').innerHTML = h;
+    if (!S.records.length) $('tblRec').innerHTML = '<p class="note">まだ記録がありません。「目標まで入れて時間をはかる」を押してみよう。</p>';
+    else {
+      let r = '<table><tr><th>蛇口の量 x（L/分）</th><th>はかった時間 y（分）</th><th>x × y</th></tr>';
+      S.records.slice().sort((p, q) => p[0] - q[0]).forEach(p => r += `<tr><td>${p[0]}</td><td>${f(p[1])}</td><td>${f(p[0] * p[1])}</td></tr>`);
+      $('tblRec').innerHTML = r + '</table>';
+    }
+  }
+
+  /* ================= シミュレーション ================= */
+  function reset() {
+    S.t = 0; S.h = Math.min(S.h0, S.H); S.hist = [[0, S.h]]; S.rows = [[0, S.h]];
+    S.playing = false; S.measuring = false; S.stopIdx = 0; S.msg = '';
+    S.stops = S.tab === 'B' ? [1,2,3,4,5].map(k => k * S.T) : [];
+  }
+
+  function advance(dt) {
+    let guard = 0;
+    while (dt > 1e-9 && S.playing && guard++ < 50) {
+      const a = cm(rate());
+      let seg = dt;
+      seg = Math.min(seg, Math.floor(S.t + 1e-9) + 1 - S.t);
+      if (S.stopIdx < S.stops.length) seg = Math.min(seg, S.stops[S.stopIdx] - S.t);
+      if (S.measuring && a > 0 && S.h < S.G) seg = Math.min(seg, (S.G - S.h) / a);
+      seg = Math.max(seg, 1e-9);
+      S.t += seg;
+      S.h = Math.max(0, Math.min(S.H, S.h + a * seg));
+      dt -= seg;
+      if (Math.abs(S.t - Math.round(S.t)) < 1e-7) {
+        S.t = Math.round(S.t);
+        S.rows.push([S.t, S.h]);
+        if (S.rows.length > 120) S.rows.splice(1, 1);
+        if (S.tab === 'A') tableA();
+      }
+      S.hist.push([S.t, S.h]);
+      if (S.hist.length > 5000) S.hist.splice(1, 1);
+      if (S.stopIdx < S.stops.length && Math.abs(S.t - S.stops[S.stopIdx]) < 1e-7) {
+        const k = ++S.stopIdx, d = S.h - S.h0;
+        S.playing = false;
+        S.msg = `${f(S.t)}分後（時間が ${k} 倍）：水位 ${f(S.h)} cm、変化 ${f(d)} cm` +
+          (k > 1 ? ` ← T後（${f(S.T)}分後）の ${k} 倍` : '');
+        syncButtons();
+      }
+      if (S.measuring && S.h >= S.G - 1e-7) {
+        S.h = S.G; S.playing = false; S.measuring = false;
+        const i = S.records.findIndex(r => r[0] === S.qin);
+        const rec = [S.qin, S.t];
+        if (i >= 0) S.records[i] = rec; else S.records.push(rec);
+        S.msg = `${S.G} cm に到達！ 蛇口 ${S.qin} L/分 → ${f(S.t)} 分`;
+        tableC(); syncButtons();
+      }
+    }
+  }
+
+  function toggle(key) {
+    if (key === 'in') S.inOpen = !S.inOpen; else S.outOpen = !S.outOpen;
+    S.measuring = false;
+    onChange();
+  }
+
+  /* ================= UI ================= */
+  function syncButtons() {
+    $('play').textContent = S.playing ? '❚❚ 一時停止' : '▶ スタート';
+    const v = (id, open) => { const b = $(id); b.textContent = open ? '開いている（クリックで閉じる）' : '閉じている（クリックで開く）'; b.classList.toggle('open', open); };
+    v('vin', S.inOpen); v('vout', S.outOpen);
+    $('vin').textContent = S.inOpen ? '開 → 閉じる' : '閉 → 開く';
+    $('vout').textContent = S.outOpen ? '開 → 閉じる' : '閉 → 開く';
     $('oIn').textContent = S.qin + ' L';
     $('oOut').textContent = S.qout + ' L';
-    $('oW').textContent = S.w + ' cm';
-    $('oD').textContent = S.d + ' cm';
-    $('oH').textContent = S.H + ' cm';
-    $('oI').textContent = S.h0 + ' cm';
-    $('h0').max = S.H;
-    $('play').textContent = S.playing ? '❚❚ 一時停止' : '▶ スタート';
+    $('oW').textContent = S.w + ' cm'; $('oD').textContent = S.d + ' cm';
+    $('oH').textContent = S.H + ' cm'; $('oI').textContent = S.h0 + ' cm';
+    $('oT').textContent = S.T + ' 分'; $('oG').textContent = S.G + ' cm';
+    $('h0').max = S.H; $('G').max = S.H;
+  }
+
+  function renderStatic() {
+    if (S.tab === 'B') tableB();
+    if (S.tab === 'C') tableC();
+    if (S.tab === 'A') tableA();
   }
 
   function update() {
     $('rH').textContent = S.h.toFixed(1);
     $('rV').textContent = (S.h * area() / 1000).toFixed(1);
-    $('rT').textContent = S.t.toFixed(1);
-    const diff = S.qin - S.qout, a = net(), st = $('status');
-    st.className = 'status ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : '');
-    st.textContent = diff > 0 ? `入る量が ${diff} L/分 多い → 水面は上がる`
-      : diff < 0 ? `出る量が ${-diff} L/分 多い → 水面は下がる`
-      : '入る量 = 出る量 → 水面は変わらない';
-    $('eq').innerHTML =
-      `1分で ${S.qin} − ${S.qout} = <b>${diff > 0 ? '+' : ''}${+diff.toFixed(1)}</b> L 変化<br>` +
-      `底面積 ${S.w}×${S.d} = <b>${area()}</b> cm² → 1分で水面は <b>${a > 0 ? '+' : ''}${a.toFixed(2)}</b> cm<br>` +
-      `y = ${a.toFixed(2)}x + ${S.h0}`;
+    $('rT').textContent = f(S.t);
+    const r = rate(), st = $('status');
+    st.className = 'status ' + (r > 0 ? 'up' : r < 0 ? 'down' : '');
+    st.textContent = S.msg ||
+      (r > 0 ? `1分で ${f(r)} L 増える → 水面は 1分で ${f(cm(r))} cm 上がる`
+       : r < 0 ? `1分で ${f(-r)} L 減る → 水面は 1分で ${f(-cm(r))} cm 下がる`
+       : '水の量が変わらない → 水面は動かない');
+    const a = cm(r);
+    $('eq').innerHTML = `1分あたり：入る <b>${S.inOpen ? S.qin : 0}</b> − 出る <b>${S.outOpen ? S.qout : 0}</b> = <b>${f(r)}</b> L ／ 底面積 ${area()} cm²<br>` +
+      `水位 y = ${f(a)} × 時間 x + ${S.h0}（水圧に関係なく一定の速さ）`;
     drawTank();
-    drawGraph();
+    if (S.tab === 'A') drawTimeGraph($('graph'));
+    if (S.tab === 'B') drawTimeGraph($('graphB'));
+    if (S.tab === 'C') drawInvGraph();
   }
 
-  function restart() {      // 設定を変えたら現在の水位から記録を引き継ぐ
-    S.h = Math.min(S.h, S.H);
-    S.hist.push([S.t, S.h]);
+  function onChange(resetAll) {
+    S.msg = '';
+    if (resetAll) reset();
+    else if (S.tab === 'A') S.hist.push([S.t, S.h]);
+    syncButtons(); renderStatic(); update();
   }
 
-  function bind(id, key, resetAll) {
-    $(id).addEventListener('input', e => {
-      S[key] = +e.target.value;
-      if (key === 'H') S.h0 = Math.min(S.h0, S.H);
-      if (resetAll) reset(); else restart();
-      sync(); update();
+  const num = (id, key, resetAll) => $(id).addEventListener('input', e => {
+    S[key] = +e.target.value;
+    if (key === 'H') S.h0 = Math.min(S.h0, S.H);
+    if (key === 'h0') S.h0 = Math.min(S.h0, S.H);
+    onChange(resetAll);
+  });
+  num('qin', 'qin', S.tab !== 'A'); num('qout', 'qout');
+  $('qin').addEventListener('input', () => { if (S.tab !== 'A') onChange(true); });
+  num('w', 'w', true); num('d', 'd', true); num('H', 'H', true); num('h0', 'h0', true);
+  num('T', 'T', true); num('G', 'G', true);
+  $('speed').addEventListener('change', e => { S.speed = +e.target.value; });
+  $('vin').addEventListener('click', () => toggle('in'));
+  $('vout').addEventListener('click', () => toggle('out'));
+  $('play').addEventListener('click', () => {
+    if (S.stopIdx >= S.stops.length && S.stops.length) reset();
+    S.msg = ''; S.playing = !S.playing; syncButtons(); update();
+  });
+  $('reset').addEventListener('click', () => onChange(true));
+  $('measure').addEventListener('click', () => {
+    if (S.G <= 0) return;
+    reset(); S.inOpen = true; S.outOpen = false; S.h = 0; S.hist = [[0, 0]]; S.rows = [[0, 0]];
+    S.measuring = true; S.playing = true; syncButtons(); renderStatic(); update();
+  });
+
+  function setTab(t) {
+    S.tab = t;
+    ['A', 'B', 'C'].forEach(k => {
+      $('tab' + k).setAttribute('aria-selected', String(k === t));
+      $('sec' + k).hidden = k !== t;
     });
+    $('panelB').hidden = t !== 'B'; $('panelC').hidden = t !== 'C';
+    if (t !== 'A') { S.h0 = 0; $('h0').value = 0; }
+    if (t === 'C') { S.inOpen = true; S.outOpen = false; }
+    onChange(true);
   }
-  function reset() {
-    S.t = 0; S.h = S.h0; S.hist = [[0, S.h0]]; S.playing = false;
-  }
-  bind('qin', 'qin'); bind('qout', 'qout');
-  bind('w', 'w', true); bind('d', 'd', true); bind('H', 'H', true); bind('h0', 'h0', true);
-  $('play').addEventListener('click', () => { S.playing = !S.playing; sync(); });
-  $('reset').addEventListener('click', () => { reset(); sync(); update(); });
+  ['A', 'B', 'C'].forEach(k => $('tab' + k).addEventListener('click', () => setTab(k)));
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', update);
 
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    if (S.playing) {
-      S.t += dt * SPEED;
-      S.h = Math.max(0, Math.min(S.H, S.h + net() * dt * SPEED));
-      S.hist.push([S.t, S.h]);
-      if (S.hist.length > 4000) S.hist.splice(1, 1);
-      update();
-    }
+    if (S.playing) { advance(dt * S.speed); update(); }
     requestAnimationFrame(frame);
   }
-  sync(); update();
+  reset(); syncButtons(); renderStatic(); update();
   requestAnimationFrame(frame);
 })();
 </script>
