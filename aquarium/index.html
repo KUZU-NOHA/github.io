@@ -67,6 +67,7 @@
   .mult th { color:var(--sub); font-weight:400; border-bottom:none; }
   .grid2 { display:grid; gap:14px; grid-template-columns:1fr; }
   @media (min-width:820px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  @media (min-width:820px){ #panel { grid-row:span 2; } }
   .strip { overflow-x:auto; padding-bottom:6px; }
   .strip svg { width:auto; height:230px; }
   [hidden] { display:none !important; }
@@ -95,7 +96,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="panel">
     <h2>操作パネル</h2>
     <fieldset class="in"><legend>🚰 蛇口（入る水）</legend>
       <div class="row" style="margin-top:8px"><button id="vin" class="valve"></button></div>
@@ -147,57 +148,45 @@
     <div class="eq" id="eq"></div>
   </section>
 
-  <section class="card wide" id="secA">
+  <section class="card" id="dataA">
     <h2>1分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
     <div class="strip" id="stripA"></div>
-    <div style="margin-top:14px">
-      <div>
-        <h2>グラフ：時間 x と水面の高さ y</h2>
-        <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
-        <div class="hint">実線は記録、点線はこのまま続けた場合の予想。バルブを開け閉めするとグラフの傾きが変わります。</div>
-      </div>
-      <div id="tableBox" style="margin-top:14px">
-        <h2>表（1分ごとに自動で記録）</h2>
-        <p class="note">蛇口だけ開けて、はじめの水位 0 cm からスタートすると、x と y の関係がよく分かります。</p>
-        <div class="scroll" id="liveTable"></div>
-      </div>
-    </div>
+    <h2 style="margin-top:12px">表（1分ごとに自動で記録）</h2>
+    <p class="note">蛇口だけ開けて、はじめの水位 0 cm からスタートすると、x と y の関係がよく分かります。</p>
+    <div class="scroll" id="liveTable"></div>
+  </section>
+  <section class="card wide" id="graphA">
+    <h2>グラフ：時間 x と水面の高さ y</h2>
+    <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
+    <div class="hint">実線は記録、点線はこのまま続けた場合の予想。バルブを開け閉めするとグラフの傾きが変わります。</div>
   </section>
 
-  <section class="card wide" id="secB" hidden>
+  <section class="card" id="dataB" hidden>
     <h2>T分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
     <div class="strip" id="stripB"></div>
-    <div class="grid2" style="margin-top:14px">
-      <div>
-        <h2>時間が 2倍・3倍 になると？</h2>
-        <p class="note">いまの出入り（バルブの状態）で、水位がどれだけ変わるか。</p>
-        <div id="tblB1"></div>
-        <h2 style="margin-top:16px">蛇口の量が 2倍・3倍 になると？（同じ T 分間）</h2>
-        <div id="tblB2"></div>
-      </div>
-      <div>
-        <h2>グラフ</h2>
-        <svg id="graphB" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
-        <div class="hint">水槽の点線は T後・2T後・3T後…の水位。グラフの点と対応しています。</div>
-      </div>
-    </div>
+    <h2 style="margin-top:12px">時間が 2倍・3倍 になると？</h2>
+    <p class="note">いまの出入り（バルブの状態）で、水位がどれだけ変わるか。</p>
+    <div class="scroll" id="tblB1"></div>
+    <h2 style="margin-top:16px">蛇口の量が 2倍・3倍 になると？（同じ T 分間）</h2>
+    <div class="scroll" id="tblB2"></div>
+  </section>
+  <section class="card wide" id="graphB_" hidden>
+    <h2>グラフ</h2>
+    <svg id="graphB" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
+    <div class="hint">水槽の点線は T後・2T後・3T後…の水位。グラフの点と対応しています。</div>
   </section>
 
-  <section class="card wide" id="secC" hidden>
-    <div class="grid2">
-      <div>
-        <h2>蛇口の量 x と 満水までの時間 y</h2>
-        <p class="note" id="noteC"></p>
-        <div id="tblC"></div>
-        <h2 style="margin-top:16px">はかった記録</h2>
-        <div id="tblRec"></div>
-      </div>
-      <div>
-        <h2>グラフ</h2>
-        <svg id="graphC" viewBox="0 0 700 300" role="img" aria-label="蛇口の量と時間のグラフ"></svg>
-        <div class="hint">かけ算 x × y がいつも同じ（＝入れる水の量）になる関係が反比例です。</div>
-      </div>
-    </div>
+  <section class="card" id="dataC" hidden>
+    <h2>蛇口の量 x と 満水までの時間 y</h2>
+    <p class="note" id="noteC"></p>
+    <div class="scroll" id="tblC"></div>
+    <h2 style="margin-top:16px">はかった記録</h2>
+    <div class="scroll" id="tblRec"></div>
+  </section>
+  <section class="card wide" id="graphC_" hidden>
+    <h2>グラフ</h2>
+    <svg id="graphC" viewBox="0 0 700 300" role="img" aria-label="蛇口の量と時間のグラフ"></svg>
+    <div class="hint">かけ算 x × y がいつも同じ（＝入れる水の量）になる関係が反比例です。</div>
   </section>
 </main>
 
@@ -607,7 +596,7 @@
     S.tab = t;
     ['A', 'B', 'C'].forEach(k => {
       $('tab' + k).setAttribute('aria-selected', String(k === t));
-      $('sec' + k).hidden = k !== t;
+      $('data' + k).hidden = k !== t; $('graph' + (k === 'A' ? 'A' : k + '_')).hidden = k !== t;
     });
     $('panelB').hidden = t !== 'B'; $('panelC').hidden = t !== 'C';
     if (t !== 'A') { S.h0 = 0; $('h0').value = 0; }
