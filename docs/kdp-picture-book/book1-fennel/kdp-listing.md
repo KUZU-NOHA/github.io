@@ -84,12 +84,27 @@ Royalty = 60% × list price − printing cost (the rate may be 50% under about $
 
 Suggestion: start at **$9.99** (competitive for picture books), watch sales, adjust later. Select "Amazon.com" and expanded distribution as you prefer.
 
-## 4. Before you press "Publish"
-- [ ] `[Author Name]` is already KUZU NOHA in the files; use the same name on the KDP form.
-- [ ] Check Amazon.com and USPTO (tmsearch.uspto.gov) for the title and the name "Fennel" (web search found no bear picture book with this name; not a legal clearance).
-- [ ] AI-generated content disclosure answered.
-- [ ] Previewer shows no errors; look at every page once.
-- [ ] Order a proof copy (author copy) before promoting the book; check colors and the gutter.
+## 4. Pre-flight results (done) and what is left for you
+
+Automated checks on `kdp-upload/interior.pdf` and `cover.pdf`:
+- Interior: 32 pages, every page 8.625 × 8.75 in (621.12 × 630 pt) = 8.5 in trim + 0.125 in bleed on outside/top/bottom. OK.
+- Art: Real-ESRGAN upscaled to ≥ 300 dpi equivalent (AI-interpolated, softer paper texture).
+- Text: placed ≥ 0.5 in from the trim edges and gutter by construction (KDP minimum 0.375 in).
+- Cover: 17.325 × 8.75 in, spine 0.0751 in (32 pages × 0.002347, premium color). **Confirm with KDP's cover calculator.**
+- Title "Fennel and the Big Red Mad" and author "KUZU NOHA" are identical on cover, title page and copyright page.
+
+Name check "Fennel" (web search only, not legal clearance):
+- No bear picture book called Fennel or "Fennel and the Big Red Mad" found.
+- "Fennel" appears as a pen name / in novels and cookbooks (Fennel Hudson's *Fennel's Journal*, *Fennel: The Hunter* by RC Nara, cozy-mystery titles) — different genres.
+- No FENNEL trademark found for books (Class 16) or toys (Class 28) in the aggregator sites searched.
+
+Left for you (I cannot do these):
+- [ ] Amazon.com: search the exact title and "Fennel bear" yourself.
+- [ ] USPTO tmsearch.uspto.gov: search FENNEL, Classes 16 and 28 (and J-PlatPat if selling in Japan).
+- [ ] KDP account: tax interview, payment method, author identity verified.
+- [ ] Fill the KDP forms with sections 1–3 above, upload both PDFs, check the Online Previewer on every page.
+- [ ] Order a proof copy (author copy) and check colors and the gutter before promoting.
+- [ ] Press **Publish** (stop here until the checks above are done).
 
 ## 5. After publishing (review takes up to several days)
 - Add an "A+ / Author Central" page for KUZU NOHA (optional).
