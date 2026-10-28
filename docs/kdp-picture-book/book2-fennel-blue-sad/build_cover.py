@@ -39,7 +39,7 @@ def main():
     f2 = B.font(24)
     sub = "A story about feeling sad"
     tw = d.textlength(sub, font=f2)
-    stroked(d, (cx - tw / 2, IN(2.75)), sub, f2, B.INK, (255, 248, 230))
+    stroked(d, (cx - tw / 2, IN(2.6)), sub, f2, B.INK, (255, 248, 230))
     fa = B.font(32)
     auth = "KUZU NOHA"
     tw = d.textlength(auth, font=fa)
