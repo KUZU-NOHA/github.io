@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>水槽の水面シミュレータ</title>
+<style>
+  :root {
+    --bg:#f3f7fa; --card:#fff; --ink:#1d2b36; --sub:#5b6b78; --line:#d5dee5;
+    --water:#4aa8e0; --water-d:#2a7fb8; --accent:#e8643c; --glass:#8fb4c9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#10181e; --card:#18232b; --ink:#e6eef3; --sub:#93a5b2; --line:#2c3b46; --glass:#5d8499; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  header { padding:20px 16px 4px; max-width:1000px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:0 0 2px; }
+  header p { margin:0; color:var(--sub); font-size:.9rem; }
+  main { max-width:1000px; margin:0 auto; padding:12px 16px 32px;
+    display:grid; gap:14px; grid-template-columns:1fr; }
+  @media (min-width:800px){ main { grid-template-columns:1.15fr 1fr; } .wide{grid-column:1/-1;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card h2 { font-size:1rem; margin:0 0 8px; }
+  svg { width:100%; height:auto; display:block; touch-action:none; }
+  .readout { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
+  .readout div { background:var(--bg); border-radius:8px; padding:8px; text-align:center; }
+  .readout b { display:block; font-size:1.3rem; font-variant-numeric:tabular-nums; }
+  .readout span { font-size:.75rem; color:var(--sub); }
+  label { display:flex; justify-content:space-between; font-size:.85rem; margin-top:10px; }
+  label output { font-variant-numeric:tabular-nums; color:var(--sub); }
+  input[type=range] { width:100%; accent-color:var(--water-d); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line);
+    background:var(--bg); color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--water-d); color:#fff; border-color:var(--water-d); }
+  .chk { display:flex; align-items:center; gap:6px; font-size:.85rem; margin:0; }
+  .eq { font-size:.9rem; background:var(--bg); border-radius:8px; padding:8px 10px; margin-top:10px;
+    font-variant-numeric:tabular-nums; }
+  .hint { font-size:.8rem; color:var(--sub); margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>水槽の水面シミュレータ</h1>
+  <p>水を入れると水面の高さはどう変わる？ 水槽の大きさや注水量を変えて確かめよう。</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>水槽（正面図）</h2>
+    <svg id="tank" viewBox="0 0 470 340" role="img" aria-label="水槽と水面の高さ"></svg>
+    <div class="readout">
+      <div><b id="rH">0</b><span>水面の高さ (cm)</span></div>
+      <div><b id="rV">0</b><span>水の量 (L)</span></div>
+      <div><b id="rP">0</b><span>満水まで (%)</span></div>
+    </div>
+    <div class="hint">水面をドラッグして高さを直接動かせます。</div>
+  </section>
+
+  <section class="card">
+    <h2>設定</h2>
+    <label>幅 <output id="oW"></output></label>
+    <input id="w" type="range" min="20" max="120" value="60">
+    <label>奥行き <output id="oD"></output></label>
+    <input id="d" type="range" min="20" max="60" value="30">
+    <label>高さ <output id="oH"></output></label>
+    <input id="H" type="range" min="20" max="80" value="40">
+    <label>注水の速さ <output id="oR"></output></label>
+    <input id="r" type="range" min="0" max="20" step="0.5" value="6">
+    <label>はじめの水位 <output id="oI"></output></label>
+    <input id="h0" type="range" min="0" max="40" step="0.5" value="5">
+    <label>経過時間 <output id="oT"></output></label>
+    <input id="t" type="range" min="0" max="20" step="0.05" value="0">
+    <div class="row">
+      <button id="play" class="primary">▶ 注水スタート</button>
+      <button id="reset">リセット</button>
+      <label class="chk"><input id="mirror" type="checkbox"> 水面を対称の軸にして折り返す</label>
+    </div>
+    <div class="eq" id="eq"></div>
+  </section>
+
+  <section class="card wide">
+    <h2>グラフ：時間と水面の高さ</h2>
+    <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
+    <div class="hint">傾きは「1分あたりに上がる水面の高さ」。底面積が大きいほど傾きはゆるやかになります。満水になると水面は一定（グラフは水平）になります。</div>
+  </section>
+</main>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const S = { w:60, d:30, H:40, r:6, h0:5, t:0, mirror:false, playing:false };
+  const tmax = 20;
+
+  const el = (name, attrs, parent) => {
+    const e = document.createElementNS(NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  // 水位 h(t) = h0 + (r*1000 / (w*d)) * t   [cm]、満水(H)で頭打ち
+  const slope = () => S.r * 1000 / (S.w * S.d);
+  const level = t => Math.min(S.H, S.h0 + slope() * t);
+  const fullTime = () => slope() > 0 ? (S.H - S.h0) / slope() : Infinity;
+
+  /* ---------- 水槽の描画 ---------- */
+  const tank = $('tank');
+  const TX = 70, TW = 290, TY = 24, TH = 270;      // 水槽の描画領域
+  let fishTick = 0;
+
+  function drawTank() {
+    tank.innerHTML = '';
+    const h = level(S.t), ratio = h / S.H;
+    const scale = Math.min(TW / S.w, TH / S.H);
+    const pw = S.w * scale, ph = S.H * scale;
+    const x0 = TX + (TW - pw) / 2, yb = TY + TH;    // 底の y
+    const yTop = yb - ph, yw = yb - ph * ratio;      // 上端・水面
+
+    const defs = el('defs', {}, tank);
+    const g = el('linearGradient', { id:'wg', x1:0, y1:0, x2:0, y2:1 }, defs);
+    el('stop', { offset:'0', 'stop-color':css('--water'), 'stop-opacity':.65 }, g);
+    el('stop', { offset:'1', 'stop-color':css('--water-d'), 'stop-opacity':.9 }, g);
+    const cp = el('clipPath', { id:'tc' }, defs);
+    el('rect', { x:x0, y:yTop, width:pw, height:ph }, cp);
+
+    const inner = el('g', { 'clip-path':'url(#tc)' }, tank);
+    // 水
+    el('rect', { x:x0, y:yw, width:pw, height:yb - yw, fill:'url(#wg)' }, inner);
+    // 魚
+    fish(inner, x0, yb, pw, yw, ratio, false);
+    if (S.mirror) fish(inner, x0, yb, pw, yw, ratio, true);
+    // 水面ライン
+    el('line', { x1:x0, x2:x0 + pw, y1:yw, y2:yw, stroke:css('--water-d'), 'stroke-width':2.5 }, tank);
+
+    // ガラス
+    el('path', { d:`M${x0} ${yTop} V${yb} H${x0 + pw} V${yTop}`, fill:'none',
+      stroke:css('--glass'), 'stroke-width':5, 'stroke-linejoin':'round' }, tank);
+
+    // 目盛（左）
+    const step = S.H > 50 ? 10 : 5;
+    for (let v = 0; v <= S.H; v += step) {
+      const y = yb - v * scale;
+      el('line', { x1:x0 - 8, x2:x0 - 2, y1:y, y2:y, stroke:css('--sub') }, tank);
+      const t = el('text', { x:x0 - 12, y:y + 4, 'text-anchor':'end', 'font-size':11, fill:css('--sub') }, tank);
+      t.textContent = v;
+    }
+    // 高さの寸法線
+    const hx = x0 + pw + 18;
+    el('line', { x1:hx, x2:hx, y1:yb, y2:yw, stroke:css('--accent'), 'stroke-width':2 }, tank);
+    el('line', { x1:hx - 5, x2:hx + 5, y1:yw, y2:yw, stroke:css('--accent'), 'stroke-width':2 }, tank);
+    el('line', { x1:hx - 5, x2:hx + 5, y1:yb, y2:yb, stroke:css('--accent'), 'stroke-width':2 }, tank);
+    const lab = el('text', { x:hx + 8, y:(yb + yw) / 2 + 4, 'font-size':14, 'font-weight':700, fill:css('--accent') }, tank);
+    lab.textContent = h.toFixed(1) + ' cm';
+    // 幅ラベル
+    const wl = el('text', { x:x0 + pw / 2, y:yb + 18, 'text-anchor':'middle', 'font-size':12, fill:css('--sub') }, tank);
+    wl.textContent = `幅 ${S.w} cm × 奥行き ${S.d} cm × 高さ ${S.H} cm`;
+    // 軸ラベル
+    if (S.mirror) {
+      const l = el('text', { x:x0 + 6, y:yw - 6, 'font-size':13, 'font-style':'italic', fill:css('--water-d'), 'font-weight':700 }, tank);
+      l.textContent = 'ℓ（対称の軸）';
+    }
+    // ドラッグ用ヒットエリア
+    tank._geom = { yb, ph };
+  }
+  let dragging = false;
+  tank.style.cursor = 'ns-resize';
+  tank.addEventListener('pointerdown', e => { dragging = true; tank.setPointerCapture(e.pointerId); dragTo(e); });
+  tank.addEventListener('pointermove', e => { if (dragging) dragTo(e); });
+  tank.addEventListener('pointerup', () => { dragging = false; });
+  tank.addEventListener('pointercancel', () => { dragging = false; });
+
+  function fish(parent, x0, yb, pw, yw, ratio, flip) {
+    // 魚は水中の固定位置（水面より下にあるときだけ見える）。flip で水面を軸に対称移動。
+    const baseY = yb - 40;                       // 魚の高さ（水槽底から40px）
+    if (!flip && baseY < yw) return;             // 水面より上では魚は見えない
+    const y = flip ? 2 * yw - baseY : baseY;
+    const x = x0 + pw * (0.3 + 0.35 * (0.5 + 0.5 * Math.sin(fishTick / 50)));
+    const gr = el('g', { transform:`translate(${x} ${y})${flip ? ' scale(1,-1)' : ''}`,
+      opacity: flip ? .45 : 1 }, parent);
+    el('ellipse', { cx:0, cy:0, rx:16, ry:9, fill:'#f0a030' }, gr);
+    el('path', { d:'M-14 0 L-26 -9 L-26 9 Z', fill:'#e8643c' }, gr);
+    el('circle', { cx:8, cy:-2, r:2, fill:'#222' }, gr);
+  }
+
+  function dragTo(e) {
+    const r = tank.getBoundingClientRect();
+    const y = (e.clientY - r.top) * (340 / r.height);
+    const { yb, ph } = tank._geom;
+    const h = Math.max(0, Math.min(S.H, (yb - y) / ph * S.H));
+    S.h0 = Math.round(h * 2) / 2;
+    S.t = 0; S.playing = false;
+    sync(); update();
+  }
+
+  /* ---------- グラフ ---------- */
+  const graph = $('graph');
+  function drawGraph() {
+    graph.innerHTML = '';
+    const L = 56, R = 20, T = 18, B = 40, W = 700, Hh = 260;
+    const pw = W - L - R, ph = Hh - T - B;
+    const X = t => L + t / tmax * pw;
+    const Y = h => T + ph - h / S.H * ph;
+    const sub = css('--sub'), line = css('--line');
+
+    for (let v = 0; v <= S.H; v += (S.H > 50 ? 10 : 5)) {
+      el('line', { x1:L, x2:L + pw, y1:Y(v), y2:Y(v), stroke:line }, graph);
+      el('text', { x:L - 8, y:Y(v) + 4, 'text-anchor':'end', 'font-size':11, fill:sub }, graph).textContent = v;
+    }
+    for (let t = 0; t <= tmax; t += 2) {
+      el('line', { x1:X(t), x2:X(t), y1:T, y2:T + ph, stroke:line }, graph);
+      el('text', { x:X(t), y:T + ph + 16, 'text-anchor':'middle', 'font-size':11, fill:sub }, graph).textContent = t;
+    }
+    el('text', { x:L + pw / 2, y:Hh - 6, 'text-anchor':'middle', 'font-size':12, fill:sub }, graph).textContent = '時間（分）';
+    el('text', { x:14, y:T + ph / 2, 'font-size':12, fill:sub, transform:`rotate(-90 14 ${T + ph / 2})`, 'text-anchor':'middle' }, graph).textContent = '水面の高さ (cm)';
+    // 満水ライン
+    el('line', { x1:L, x2:L + pw, y1:Y(S.H), y2:Y(S.H), stroke:css('--accent'), 'stroke-dasharray':'5 4' }, graph);
+    // 折れ線
+    const tf = Math.min(fullTime(), tmax);
+    let d = `M${X(0)} ${Y(S.h0)} L${X(tf)} ${Y(level(tf))}`;
+    if (tf < tmax) d += ` L${X(tmax)} ${Y(S.H)}`;
+    el('path', { d, fill:'none', stroke:css('--water-d'), 'stroke-width':3 }, graph);
+    // 現在位置
+    const h = level(S.t);
+    el('line', { x1:X(S.t), x2:X(S.t), y1:Y(h), y2:T + ph, stroke:css('--accent'), 'stroke-dasharray':'3 3' }, graph);
+    el('line', { x1:L, x2:X(S.t), y1:Y(h), y2:Y(h), stroke:css('--accent'), 'stroke-dasharray':'3 3' }, graph);
+    el('circle', { cx:X(S.t), cy:Y(h), r:6, fill:css('--accent') }, graph);
+  }
+
+  /* ---------- UI 同期 ---------- */
+  function sync() {
+    $('oW').textContent = S.w + ' cm';
+    $('oD').textContent = S.d + ' cm';
+    $('oH').textContent = S.H + ' cm';
+    $('oR').textContent = S.r + ' L/分';
+    $('oI').textContent = S.h0 + ' cm';
+    $('oT').textContent = S.t.toFixed(1) + ' 分';
+    $('h0').max = S.H;
+    $('t').value = S.t;
+    $('h0').value = S.h0;
+    $('play').textContent = S.playing ? '❚❚ 一時停止' : '▶ 注水スタート';
+  }
+
+  function update() {
+    const h = level(S.t);
+    $('rH').textContent = h.toFixed(1);
+    $('rV').textContent = (h * S.w * S.d / 1000).toFixed(1);
+    $('rP').textContent = Math.round(h / S.H * 100);
+    const a = slope();
+    $('eq').innerHTML =
+      `底面積 ${S.w}×${S.d} = <b>${S.w * S.d}</b> cm² ／ 1分で <b>${a.toFixed(2)}</b> cm 上昇<br>` +
+      `y = ${a.toFixed(2)}x + ${S.h0}（0 ≦ x ≦ ${isFinite(fullTime()) ? fullTime().toFixed(1) : '―'}）` +
+      (isFinite(fullTime()) ? `　→ ${fullTime().toFixed(1)} 分で満水` : '');
+    drawTank();
+    drawGraph();
+  }
+
+  function bind(id, key) {
+    $(id).addEventListener('input', e => {
+      S[key] = +e.target.value;
+      if (key === 'H') S.h0 = Math.min(S.h0, S.H);
+      sync(); update();
+    });
+  }
+  bind('w', 'w'); bind('d', 'd'); bind('H', 'H'); bind('r', 'r'); bind('h0', 'h0');
+  $('t').addEventListener('input', e => { S.t = +e.target.value; S.playing = false; sync(); update(); });
+  $('mirror').addEventListener('change', e => { S.mirror = e.target.checked; update(); });
+  $('play').addEventListener('click', () => {
+    if (S.t >= tmax) S.t = 0;
+    S.playing = !S.playing; sync();
+  });
+  $('reset').addEventListener('click', () => { S.t = 0; S.playing = false; sync(); update(); });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', update);
+
+  // アニメーション
+  let last = performance.now();
+  function frame(now) {
+    const dt = (now - last) / 1000; last = now;
+    fishTick++;
+    if (S.playing) {
+      S.t = Math.min(tmax, S.t + dt * 1.5);   // 実時間1秒 = 1.5分
+      if (S.t >= tmax || level(S.t) >= S.H) S.playing = false;
+      sync();
+    }
+    if (S.playing || fishTick % 2 === 0) update();
+    requestAnimationFrame(frame);
+  }
+  sync(); update();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
