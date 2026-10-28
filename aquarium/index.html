@@ -418,8 +418,6 @@
     let h = '<table>';
     h += '<tr><th>時間 x（分）</th>' + c(r => `<td>${r[0] ? r[0] + '分後' : 'はじめ'}</td>`) + '</tr>';
     h += '<tr><th>水位 y (cm)</th>' + c(r => `<td>${f(r[1])}</td>`) + '</tr>';
-    h += '<tr><th>はじめから増えた高さ (cm)</th>' + c(r => `<td>${f(r[1] - S.h0)}</td>`) + '</tr>';
-    h += '<tr class="ratio"><th>増えた高さ ÷ x</th>' + c(r => `<td>${r[0] ? f((r[1] - S.h0) / r[0]) : '―'}</td>`) + '</tr>';
     const box = $('liveTable');
     box.innerHTML = h + '</table>';
     box.scrollLeft = box.scrollWidth;
