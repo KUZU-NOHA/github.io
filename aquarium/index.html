@@ -49,7 +49,7 @@
   .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
   button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
   button.primary { background:var(--water-d); color:#fff; border-color:var(--water-d); }
-  button.valve { font-weight:700; min-width:6.5em; }
+  button.valve { font-weight:700; }
   button.valve.open { background:var(--in); color:#fff; border-color:var(--in); }
   fieldset.out button.valve.open { background:var(--out); border-color:var(--out); }
   .note { font-size:.85rem; color:var(--sub); margin:0 0 8px; }
@@ -70,7 +70,14 @@
   .mult th { color:var(--sub); font-weight:400; border-bottom:none; }
   .grid2 { display:grid; gap:14px; grid-template-columns:1fr; }
   @media (min-width:820px){ .grid2 { grid-template-columns:1fr 1fr; } }
-  @media (min-width:820px){ #panel { grid-row:span 2; } }
+  @media (min-width:820px){ 
+    .side { grid-column:2; grid-row:1 / span 2; align-self:start; position:sticky; top:8px; } }
+  .side { display:flex; flex-direction:column; gap:14px; min-width:0; }
+  .ctl { display:grid; grid-template-columns:auto auto 1fr 4.6em; gap:8px; align-items:center; margin-bottom:10px; }
+  .ctl .nm { font-weight:700; font-size:.9rem; white-space:nowrap; }
+  .ctl output { text-align:right; font-variant-numeric:tabular-nums; font-size:.9rem; }
+  .ctl button { padding:6px 10px; min-width:3em; }
+  .ctl.in .nm { color:var(--in); } .ctl.out .nm { color:var(--out); }
   .strip { overflow-x:auto; padding-bottom:6px; }
   .strip svg { width:auto; height:230px; }
   [hidden] { display:none !important; }
@@ -99,47 +106,44 @@
     </div>
   </section>
 
+  <div class="side">
   <section class="card" id="panel">
-    <h2>操作パネル</h2>
-    <fieldset class="in"><legend>🚰 蛇口（入る水）</legend>
-      <div class="row" style="margin-top:8px"><button id="vin" class="valve"></button></div>
-      <label>1分あたり <output id="oIn"></output></label>
+    <div class="ctl in">
+      <button id="vin" class="valve"></button>
+      <span class="nm">🚰 蛇口</span>
       <input id="qin" type="range" min="0.5" max="20" step="0.5" value="4">
-    </fieldset>
-    <fieldset class="out"><legend>🕳 排水口（出る水）</legend>
-      <div class="row" style="margin-top:8px"><button id="vout" class="valve"></button></div>
-      <label>1分あたり <output id="oOut"></output></label>
+      <output id="oIn"></output>
+    </div>
+
+
+    <div class="ctl out">
+      <button id="vout" class="valve"></button>
+      <span class="nm">🕳 排水口</span>
       <input id="qout" type="range" min="0.5" max="20" step="0.5" value="2">
-    </fieldset>
-    <fieldset><legend>はじめの水位・スピード</legend>
-      <div hidden>
-      <label>幅 <output id="oW"></output></label>
-      <input id="w" type="range" min="20" max="100" step="5" value="50">
-      <label>奥行き <output id="oD"></output></label>
-      <input id="d" type="range" min="20" max="60" step="5" value="40">
-      <label>高さ <output id="oH"></output></label>
-      <input id="H" type="range" min="20" max="80" step="5" value="40">
-      </div>
-      <label>はじめの水位 <output id="oI"></output></label>
-      <input id="h0" type="range" min="0" max="40" step="1" value="0">
-      <label>スピード
-        <select id="speed">
-          <option value="0.5">ゆっくり（1秒＝0.5分）</option>
-          <option value="1" selected>ふつう（1秒＝1分）</option>
-          <option value="2">はやい（1秒＝2分）</option>
-          <option value="4">とてもはやい（1秒＝4分）</option>
-        </select>
-      </label>
-    </fieldset>
+      <output id="oOut"></output>
+    </div>
     <div class="row">
       <button id="play" class="primary"></button>
-      <button id="reset">はじめにもどす</button>
+      <button id="reset">もどす</button>
+      <select id="speed" aria-label="スピード">
+        <option value="0.5">ゆっくり</option>
+        <option value="1" selected>ふつう</option>
+        <option value="2">はやい</option>
+        <option value="4">とてもはやい</option>
+      </select>
+    </div>
+    <div hidden>
+      <output id="oW"></output><input id="w" type="range" min="20" max="100" step="5" value="50">
+      <output id="oD"></output><input id="d" type="range" min="20" max="60" step="5" value="40">
+      <output id="oH"></output><input id="H" type="range" min="20" max="80" step="5" value="40">
+      <output id="oI"></output><input id="h0" type="range" min="0" max="40" step="1" value="0">
+      <div class="eq" id="eq"></div>
     </div>
     <div id="panelB" hidden>
-      <fieldset><legend>② 基準の時間 T</legend>
+      <fieldset><legend>基準の時間 T</legend>
         <label>T = <output id="oT"></output></label>
         <input id="T" type="range" min="1" max="5" step="0.5" value="2">
-        <div class="hint">スタートすると、T分・2T分・3T分…で自動的に止まります。止まったら水位を読み取り、もう一度スタートで続きます。</div>
+        <div class="hint">T分・2T分…で自動的に止まります。もう一度スタートで続きます。</div>
       </fieldset>
     </div>
     <div id="panelC" hidden>
@@ -147,23 +151,29 @@
         <label>空の水槽から入れる高さ <output id="oG"></output></label>
         <input id="G" type="range" min="5" max="40" step="5" value="20">
         <div class="row"><button id="measure" class="primary">⏱ 目標まで入れて時間をはかる</button></div>
-        <div class="hint">蛇口の量を変えて何回かはかると、右下のグラフに点がたまります。</div>
+        
       </fieldset>
     </div>
-    <div class="eq" id="eq"></div>
   </section>
-
-  <section class="card" id="dataA">
-    <h2>表（1分ごとに自動で記録）</h2>
-    <div class="scroll" id="liveTable"></div>
-    <h2 style="margin-top:12px">1分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
-    <div class="strip" id="stripA"></div>
-  </section>
-  <section class="card wide" id="graphA">
+  <section class="card" id="graphA">
     <h2>グラフ：時間 x と水面の高さ y</h2>
     <svg id="graph" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
     <div class="hint">実線は記録、点線はこのまま続けた場合の予想。バルブを開け閉めするとグラフの傾きが変わります。</div>
   </section>
+
+  <section class="card" id="graphB_" hidden>
+    <h2>グラフ</h2>
+    <svg id="graphB" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
+    <div class="hint">水槽の点線は T後・2T後・3T後…の水位。グラフの点と対応しています。</div>
+  </section>
+
+  <section class="card" id="graphC_" hidden>
+    <h2>グラフ</h2>
+    <svg id="graphC" viewBox="0 0 700 300" role="img" aria-label="蛇口の量と時間のグラフ"></svg>
+    <div class="hint">かけ算 x × y がいつも同じ（＝入れる水の量）になる関係が反比例です。</div>
+  </section>
+  </div>
+
 
   <section class="card" id="dataB" hidden>
     <h2>T分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
@@ -174,11 +184,6 @@
     <h2 style="margin-top:16px">蛇口の量が 2倍・3倍 になると？（同じ T 分間）</h2>
     <div class="scroll" id="tblB2"></div>
   </section>
-  <section class="card wide" id="graphB_" hidden>
-    <h2>グラフ</h2>
-    <svg id="graphB" viewBox="0 0 700 260" role="img" aria-label="時間と水面の高さのグラフ"></svg>
-    <div class="hint">水槽の点線は T後・2T後・3T後…の水位。グラフの点と対応しています。</div>
-  </section>
 
   <section class="card" id="dataC" hidden>
     <h2>蛇口の量 x と 満水までの時間 y</h2>
@@ -187,10 +192,12 @@
     <h2 style="margin-top:16px">はかった記録</h2>
     <div class="scroll" id="tblRec"></div>
   </section>
-  <section class="card wide" id="graphC_" hidden>
-    <h2>グラフ</h2>
-    <svg id="graphC" viewBox="0 0 700 300" role="img" aria-label="蛇口の量と時間のグラフ"></svg>
-    <div class="hint">かけ算 x × y がいつも同じ（＝入れる水の量）になる関係が反比例です。</div>
+
+  <section class="card" id="dataA">
+    <h2>表（1分ごとに自動で記録）</h2>
+    <div class="scroll" id="liveTable"></div>
+    <h2 style="margin-top:12px">1分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
+    <div class="strip" id="stripA"></div>
   </section>
 </main>
 
@@ -528,10 +535,10 @@
     $('play').textContent = S.playing ? '❚❚ 一時停止' : '▶ スタート';
     const v = (id, open) => { const b = $(id); b.textContent = open ? '開いている（クリックで閉じる）' : '閉じている（クリックで開く）'; b.classList.toggle('open', open); };
     v('vin', S.inOpen); v('vout', S.outOpen);
-    $('vin').textContent = S.inOpen ? '開 → 閉じる' : '閉 → 開く';
-    $('vout').textContent = S.outOpen ? '開 → 閉じる' : '閉 → 開く';
-    $('oIn').textContent = S.qin + ' L';
-    $('oOut').textContent = S.qout + ' L';
+    $('vin').textContent = S.inOpen ? '開' : '閉';
+    $('vout').textContent = S.outOpen ? '開' : '閉';
+    $('oIn').textContent = S.qin + ' L/分';
+    $('oOut').textContent = S.qout + ' L/分';
     $('oW').textContent = S.w + ' cm'; $('oD').textContent = S.d + ' cm';
     $('oH').textContent = S.H + ' cm'; $('oI').textContent = S.h0 + ' cm';
     $('oT').textContent = S.T + ' 分'; $('oG').textContent = S.G + ' cm';
