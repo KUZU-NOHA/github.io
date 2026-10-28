@@ -24,11 +24,12 @@
   .tabs { display:flex; gap:6px; max-width:1040px; margin:12px auto 0; padding:0 16px; flex-wrap:wrap; }
   .tabs button { border-radius:999px; padding:8px 16px; font-weight:700; }
   .tabs button[aria-selected=true] { background:var(--water-d); color:#fff; border-color:var(--water-d); }
-  main { max-width:1040px; margin:0 auto; padding:12px 16px 32px; display:grid; gap:14px; grid-template-columns:1fr; }
-  @media (min-width:820px){ main { grid-template-columns:1.2fr 1fr; } .wide{grid-column:1/-1;} }
+  main { max-width:1180px; margin:0 auto; padding:12px 16px 32px; display:grid; gap:14px; grid-template-columns:1fr; }
+  @media (min-width:820px){ main { grid-template-columns:1.6fr 1fr; } .wide{grid-column:1/-1;} }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0; }
   .card h2 { font-size:1rem; margin:0 0 8px; }
   svg { width:100%; height:auto; display:block; }
+  #tank { max-height:400px; }
   .flow { stroke-dasharray:10 8; animation:fl .5s linear infinite; }
   @keyframes fl { to { stroke-dashoffset:-18; } }
   .status { margin-top:8px; padding:8px 12px; border-radius:8px; background:var(--bg); font-weight:700; text-align:center; min-height:2.6em; }
@@ -56,8 +57,10 @@
   .eq { font-size:.9rem; background:var(--bg); border-radius:8px; padding:8px 10px; margin-top:10px; font-variant-numeric:tabular-nums; }
   .scroll { overflow-x:auto; }
   #liveTable table { width:auto; }
-  #liveTable td { min-width:72px; }
-  #liveTable th:first-child { min-width:190px; text-align:left; background:var(--bg); }
+  #liveTable table { font-size:.95rem; }
+  #liveTable th, #liveTable td { padding:5px 4px; }
+  #liveTable td { min-width:56px; }
+  #liveTable th:first-child { min-width:84px; text-align:left; background:var(--bg); }
   .scroll th:first-child { position:sticky; left:0; z-index:1; }
   table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:.9rem; }
   th, td { border:1px solid var(--line); padding:5px 8px; text-align:center; white-space:nowrap; }
@@ -151,11 +154,10 @@
   </section>
 
   <section class="card" id="dataA">
-    <h2>1分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
-    <div class="strip" id="stripA"></div>
-    <h2 style="margin-top:12px">表（1分ごとに自動で記録）</h2>
-    <p class="note">蛇口だけ開けて、はじめの水位 0 cm からスタートすると、x と y の関係がよく分かります。</p>
+    <h2>表（1分ごとに自動で記録）</h2>
     <div class="scroll" id="liveTable"></div>
+    <h2 style="margin-top:12px">1分ごとの水面の高さ（横が時間、下が水面の高さ）</h2>
+    <div class="strip" id="stripA"></div>
   </section>
   <section class="card wide" id="graphA">
     <h2>グラフ：時間 x と水面の高さ y</h2>
@@ -418,8 +420,8 @@
   function tableA() {
     const rows = S.rows, c = fn => rows.map(fn).join('');
     let h = '<table>';
-    h += '<tr><th>時間 x（分）</th>' + c(r => `<td>${r[0] ? r[0] + '分後' : 'はじめ'}</td>`) + '</tr>';
-    h += '<tr><th>水位 y (cm)</th>' + c(r => `<td>${f(r[1])}</td>`) + '</tr>';
+    h += '<tr><th>時間 x</th>' + c(r => `<td>${r[0] ? r[0] + '分後' : 'はじめ'}</td>`) + '</tr>';
+    h += '<tr><th>水位 y</th>' + c(r => `<td>${f(r[1])} cm</td>`) + '</tr>';
     const box = $('liveTable');
     box.innerHTML = h + '</table>';
     box.scrollLeft = box.scrollWidth;
