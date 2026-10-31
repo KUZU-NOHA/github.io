@@ -1,6 +1,6 @@
-# KDP 出品タスク指示書（第1巻）— ブラウザ操作ができるセッション用
+# KDP 出品タスク指示書（第1巻・ペーパーバック）— ブラウザ操作ができるセッション用
 
-このファイルを、**Chrome 拡張機能（Claude in Chrome）がつながった Claude のセッション**（パソコンの Claude デスクトップアプリ等）に貼り付けて実行させます。
+Chrome 拡張機能（Claude in Chrome）がつながった Claude のセッションに実行させます。
 KDP にはあなた自身がログインしておきます。**パスワード・認証コードは Claude に渡さないでください。**
 
 ## 依頼文（そのまま貼り付け）
@@ -19,7 +19,7 @@ Amazon KDP（kdp.amazon.com）で、ペーパーバック「Fennel and the Big R
 - Language: English
 - Book title: Fennel and the Big Red Mad
 - Subtitle: A Story About Big Feelings
-- Series title: Fennel's Feelings / Series number: 1（Series欄がある場合。なければ出版後に追加）
+- Series title: Fennel's Feelings / Series number: 1（最初の巻。Series欄がなければ出版後に追加）
 - Author: first name KUZU / last name NOHA
 - Contributors: なし / Public domain: No / Adult content: なし
 - Reading age: min 3 / max 6
@@ -71,8 +71,8 @@ Amazon KDP（kdp.amazon.com）で、ペーパーバック「Fennel and the Big R
 1. Amazon.com で書名「Fennel and the Big Red Mad」を検索する。
 2. USPTO（tmsearch.uspto.gov）で FENNEL を区分16・28で検索する。
 3. 税務情報・支払い方法・本人確認が KDP アカウントで完了していることを確認する。
-4. プルーフ（見本）を1冊注文して色と綴じ目を見るのが安全。
-5. 最後に、止まった画面の内容を確認し、**あなた自身が「出版」を押す**。
+4. プルーフ（見本）を1冊注文して、色と綴じ目を見るのが安全。
+5. 止まった画面の内容を確認し、**あなた自身が「出版」を押す**。
 
 ## 注意
 - ファイルのアップロードは、ブラウザ拡張から自動でできない場合があります。そのときは、ダウンロードしたPDFを自分で選んでください。
