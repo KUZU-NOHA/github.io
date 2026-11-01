@@ -1,0 +1,152 @@
+{
+ "n": 9,
+ "title": "Fennel and the Big Teal Lonely",
+ "title_lines": [
+  "Fennel and",
+  "the Big Teal Lonely"
+ ],
+ "subtitle": "A story about feeling lonely",
+ "subtitle_listing": "A Story About Feeling Lonely",
+ "story": [
+  [
+   "Fennel went to the park one day,",
+   "ready to swing and slide and play.",
+   "top"
+  ],
+  [
+   "But Clover was gone to see her gran.",
+   "And everyone else had a friend or a plan.",
+   "top"
+  ],
+  [
+   "Ducks played tag. Squirrels shared a ball.",
+   "Fennel stood still. He played with no one at all.",
+   "top"
+  ],
+  [
+   "A big teal bubble rose up from the ground.",
+   "It wrapped him in quiet, without a sound.",
+   "top"
+  ],
+  [
+   "Everything sounded far, far away.",
+   "He sat on a bench. He had nobody to play.",
+   "top"
+  ],
+  [
+   "Mama came over. “Lonely is when",
+   "we’d love a friend, and we want one again.”",
+   "top"
+  ],
+  [
+   "“First, LOOK around. Who is nearby?",
+   "Someone is there, with a kind little eye.”",
+   "top"
+  ],
+  [
+   "“Next, say HELLO, with a smile that’s warm.",
+   "A hello can melt a lonely storm.”",
+   "top"
+  ],
+  [
+   "“Last, INVITE. Ask someone to play.",
+   "‘Want to swing with me?’ That’s all you say.”",
+   "top"
+  ],
+  [
+   "Fennel looked. A hedgehog, small and shy,",
+   "was drawing in the dirt with a stick nearby.",
+   "top"
+  ],
+  [
+   "“Hello!” said Fennel. “Want to play?”",
+   "“Yes!” said Pip. “I hoped you’d say!”",
+   "top"
+  ],
+  [
+   "The teal bubble floated away, soft as a sigh.",
+   "Look. Hello. Invite. And a friend is nearby.",
+   "top"
+  ]
+ ],
+ "steps_title": "Fennel’s 3 Friend Steps",
+ "steps": [
+  [
+   "1. LOOK",
+   "Look around for someone nearby."
+  ],
+  [
+   "2. HELLO",
+   "Say hello with a smile."
+  ],
+  [
+   "3. INVITE",
+   "Invite someone to play."
+  ]
+ ],
+ "steps_closing": [
+  "Lonely is okay.",
+  "A friend is near."
+ ],
+ "note_lines": [
+  "Name the feeling: “You feel lonely.”",
+  "Stay close and listen before fixing.",
+  "Role-play a hello and an invitation at home.",
+  "Arrange short playdates and celebrate every try."
+ ],
+ "cover_blurb": [
+  "Fennel’s best friend is away.",
+  "Everyone at the park has a friend,",
+  "and a quiet Big Teal Lonely",
+  "wraps around him.",
+  "",
+  "With a little help from Mama Bear,",
+  "Fennel learns three friend steps:",
+  "Look. Hello. Invite.",
+  "",
+  "A warm rhyming story for ages 3–6,",
+  "with a note for grown-ups."
+ ],
+ "listing": {
+  "description": "<p><b>Fennel goes to the park, ready to swing and slide and play. But Clover is away, and everyone else already has a friend.</b></p>\n<p>A big teal bubble rises up and wraps him in quiet. Everything sounds far away, until Mama Bear sits beside him and shows him how to find a friend.</p>\n<p>With three friend steps — <b>Look. Hello. Invite.</b> — little readers learn that lonely is okay, and that a friend is nearby.</p>\n<p><b>Inside this warm rhyming picture book:</b></p>\n<ul>\n<li>A cozy read-aloud rhyme for ages 3–6, perfect for playgrounds and new schools</li>\n<li>A kid-friendly image of loneliness as a quiet teal bubble that floats away</li>\n<li>Three easy steps children can copy: Look, Hello, Invite</li>\n<li>A note for grown-ups with simple ways to help a lonely child make friends</li>\n<li>Soft watercolor-style illustrations</li>\n</ul>\n<p>Book 9 in the Fennel's Feelings series. A gentle story about feeling alone and finding a friend.</p>",
+  "keywords": [
+   "children's book about loneliness and friendship",
+   "book about making friends at the park",
+   "lonely child picture book ages 3-6",
+   "how to make a friend book for kids",
+   "social emotional learning book preschool",
+   "rhyming picture book bear friend",
+   "help kids feel less lonely"
+  ],
+  "categories": [
+   "Children's Books › Growing Up & Facts of Life › Emotions & Feelings",
+   "Children's Books › Growing Up & Facts of Life › Friendship",
+   "Children's Books › Literature & Fiction › Animals › Bears"
+  ],
+  "notes": "- No book titled \"Fennel and the Big Teal Lonely\" or \"Big Teal Lonely\" found.\n- Closest: *My Lonely Book*, *I Feel Lonely* (DK), *When I Feel Lonely* (Britta Teckentrup). Check the exact title on Amazon before publishing."
+ },
+ "gen": {
+  "refs": [
+   "character-sheet.png",
+   "mama-ref.png",
+   "pip-ref.png"
+  ],
+  "common": "Use your built-in image generation tool to create ONE picture-book illustration. Use the attached images as references: character-sheet.png for the bear Fennel (round brown cub, cream muzzle, mustard-yellow sweater and red scarf by day; keep his face and proportions IDENTICAL), mama-ref.png for Mama Bear (larger, same brown fur and cream muzzle, lavender cardigan and floral skirt, kind face) and for the painting style and pip-ref.png for Pip, a small shy hedgehog with a cream face and soft brown spines in a little green vest (keep him identical). Style: soft watercolor and gouache children's picture book, warm cozy palette, subtle paper texture. The setting is a sunny village park with swings, a slide, a pond with ducks and a big oak tree, with simple animal playmates (ducks, squirrels, rabbits). The 'loneliness' is a big, quiet, glass-like teal (blue-green) soap-bubble that rises around Fennel and mutes the world outside it, softly faded colors beyond the bubble (never a monster, no face). No text, letters or words anywhere in the image (no signs, labels or writing on anything). ",
+  "spread": "Wide 2:1 panoramic spread. The picture will be folded in the exact middle (a book gutter), so NOTHING important may sit in the central 15% vertical strip: all characters, faces, and key objects must be fully inside either the LEFT half or the RIGHT half, as specified. Leave a calm low-detail area along the top for text. Request the largest output size the tool supports. ",
+  "scenes": {
+   "s01": "Fennel walking happily into the park with Mama Bear carrying a picnic basket, both fully in the RIGHT half (Fennel about 62%, Mama about 84%); LEFT half: swings and a slide in sunshine.",
+   "s02": "Fennel standing at the park gate looking around hopefully; an empty bench with a small blue ball on it stands beside him, both fully in the LEFT half (Fennel about 27%); in the RIGHT half, far away, pairs of animals playing happily.",
+   "s03": "Ducks playing tag and two squirrels sharing a ball, all fully in the RIGHT half (55% to 95%); Fennel standing alone and still, fully in the LEFT half (about 27%), looking sad.",
+   "s04": "A big glass-like teal soap-bubble rising from the ground around Fennel, wrapping him in; Fennel inside it, fully in the LEFT half (about 27%), the world beyond slightly faded; RIGHT half: the park far away.",
+   "s05": "Fennel sitting alone on a park bench inside a faint teal bubble, chin in his paws, fully in the RIGHT half (about 72%); LEFT half: empty swings and the pond far away in faded colors.",
+   "s06": "Mama Bear sitting next to Fennel on the bench with an arm around him, both fully in the LEFT half (Fennel about 18%, Mama about 38%), the teal bubble around Fennel; RIGHT half: the park and the oak tree.",
+   "s07": "Mama Bear pointing across the park while Fennel looks, a clearer thinner bubble around him, both fully in the RIGHT half (Fennel about 62%, Mama about 84%); LEFT half: the park path and flower beds.",
+   "s08": "Fennel practicing a warm smile and a little wave hello, the teal bubble thinner and starting to shimmer, Mama Bear smiling beside him, both fully in the LEFT half (Fennel about 18%, Mama about 38%); RIGHT half: the pond with ducks.",
+   "s09": "Fennel pointing hopefully at the swings as if inviting someone, Mama Bear smiling beside him, both fully in the RIGHT half (Fennel about 62%, Mama about 84%), the teal bubble almost gone; LEFT half: the swings.",
+   "s10": "Fennel standing fully in the LEFT half (about 27%), looking toward the right with interest; Pip the small shy hedgehog in a green vest drawing in the dirt with a stick under the oak tree, fully in the RIGHT half (about 72%).",
+   "s11": "Fennel waving hello to Pip the hedgehog and Pip smiling shyly, both fully in the RIGHT half (Fennel about 62%, Pip about 84%) near the swings; the bubble gone; LEFT half: the pond with ducks.",
+   "s12": "Fennel and Pip on two swings laughing happily, both fully in the RIGHT half (Fennel about 62%, Pip about 84%); a teal bubble floats up softly into the sky like a soap bubble in the LEFT half; LEFT half: the park with the oak tree.",
+   "cover": "SQUARE 1:1 front cover art. IMPORTANT LAYOUT: the top 38% of the image must be calm empty soft sky (no objects) because a large title will be printed there. Scene in the lower 62%: Fennel sitting alone on a park bench inside a big glass-like teal bubble, chin in his paws, looking wistful; far in the background faded animals playing together on swings. Fennel is the largest figure."
+  }
+ }
+}

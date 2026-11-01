@@ -1,6 +1,7 @@
 """Real-ESRGAN x4 upscaling queue for several books (CPU). Run with the venv python:
 /tmp/claude-0/upv/bin/python common/upscale_queue.py <book_dir> [<book_dir> ...]
 For each book it upscales images/<name>.png -> images_hires/<name>.png when the source exists and the hires copy does not.
+Only names listed in <book>/images/approved.txt are processed (written after visual QA).
 Keeps polling until every expected file exists (or /tmp/claude-0/upscale.stop appears)."""
 import os, sys, time, torch, numpy as np
 from PIL import Image
@@ -23,6 +24,9 @@ def up(src, dst, tile=384, pad=16):
     Image.fromarray((out[0].permute(1, 2, 0).numpy() * 255).round().astype("uint8")).save(dst)
 
 books = [os.path.abspath(b) for b in sys.argv[1:]]
+def approved(b):
+    p = os.path.join(b, "images", "approved.txt")
+    return set(open(p).read().split()) if os.path.exists(p) else set()
 for b in books:
     os.makedirs(os.path.join(b, "images_hires"), exist_ok=True)
 while True:
@@ -30,7 +34,7 @@ while True:
     for b in books:
         for n in NAMES:
             src = os.path.join(b, "images", n + ".png"); dst = os.path.join(b, "images_hires", n + ".png")
-            if os.path.exists(src) and not os.path.exists(dst):
+            if os.path.exists(src) and n in approved(b) and not os.path.exists(dst):
                 t = time.time(); up(src, dst + ".tmp.png"); os.replace(dst + ".tmp.png", dst)
                 print("done", os.path.basename(b), n, round(time.time() - t), flush=True); did = True
                 break
