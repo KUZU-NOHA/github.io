@@ -21,6 +21,8 @@ while len(done) < len(books):
         if b in done: continue
         if all(os.path.exists(os.path.join(b, "images_hires", n + ".png")) for n in NAMES):
             try:
+                for n in NAMES:  # make sure every upscaled image is fully written and readable
+                    im = Image.open(os.path.join(b, "images_hires", n + ".png")); im.load()
                 subprocess.run(["python3", os.path.join(root, "build_book.py"), b], check=True, capture_output=True)
                 subprocess.run(["python3", os.path.join(root, "build_cover.py"), b], check=True, capture_output=True)
                 os.makedirs(os.path.join(b, "kdp-upload"), exist_ok=True)
@@ -28,8 +30,8 @@ while len(done) < len(books):
                     subprocess.run(["cp", os.path.join(b, "out", f), os.path.join(b, "kdp-upload", f)], check=True)
                 previews(b)
                 print("BUILT", os.path.basename(b), flush=True)
+                done.add(b)
             except Exception as e:
-                print("FAILED", os.path.basename(b), e, flush=True)
-            done.add(b)
+                print("FAILED (will retry)", os.path.basename(b), e, flush=True)
     time.sleep(60)
 print("ALL_BUILT", flush=True)
